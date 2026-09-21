@@ -1,0 +1,89 @@
+-- GOOGLE-LOGIN ONLINE BIDDING SECURITY PATCH
+-- Run this AFTER supabase.sql in Supabase SQL Editor.
+
+-- Store the authenticated Google user on online bids.
+alter table public.bids add column if not exists auth_user_id uuid;
+alter table public.bids add column if not exists bidder_email text;
+
+-- Online bidders must be authenticated. Admin/offline actions also remain authenticated.
+create or replace function public.place_bid(
+  p_item_number integer,
+  p_bidder_name text,
+  p_amount numeric,
+  p_source text default 'online'
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  a auction_state%rowtype;
+  v_user_id uuid := auth.uid();
+  v_email text := auth.jwt() ->> 'email';
+  v_name text := trim(coalesce(auth.jwt() -> 'user_metadata' ->> 'full_name', auth.jwt() -> 'user_metadata' ->> 'name', p_bidder_name, v_email, 'Google user'));
+begin
+  if v_user_id is null then
+    return jsonb_build_object('ok', false, 'message', 'Please sign in with Google before bidding.');
+  end if;
+
+  if p_source not in ('online','offline') then
+    return jsonb_build_object('ok', false, 'message', 'Invalid bid source.');
+  end if;
+
+  select * into a from public.auction_state where id = 1 for update;
+
+  if a.status <> 'open' then
+    return jsonb_build_object('ok', false, 'message', 'Bidding is closed.');
+  end if;
+
+  if p_item_number <> a.item_number then
+    return jsonb_build_object('ok', false, 'message', 'This item is no longer active.');
+  end if;
+
+  if length(v_name) < 2 then
+    return jsonb_build_object('ok', false, 'message', 'Could not determine your name.');
+  end if;
+
+  if p_amount <= a.current_bid then
+    return jsonb_build_object('ok', false, 'message', 'Your bid must be higher than ₹' || to_char(a.current_bid, 'FM9999999990.00'));
+  end if;
+
+  update public.auction_state
+  set current_bid = p_amount,
+      highest_bidder = v_name,
+      highest_bid_source = p_source,
+      updated_at = now()
+  where id = 1;
+
+  insert into public.bids(item_number, bidder_name, amount, source, auth_user_id, bidder_email)
+  values (p_item_number, v_name, p_amount, p_source, v_user_id, v_email);
+
+  return jsonb_build_object('ok', true, 'message', 'Bid accepted.');
+end;
+$$;
+
+-- Only signed-in users can call the bidding RPC.
+revoke execute on function public.place_bid(integer,text,numeric,text) from public;
+revoke execute on function public.place_bid(integer,text,numeric,text) from anon;
+grant execute on function public.place_bid(integer,text,numeric,text) to authenticated;
+
+
+-- Admin action: clear all bidding history (requires a signed-in user).
+create or replace function public.clear_bidding_history()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('ok', false, 'message', 'Admin login required.');
+  end if;
+  delete from public.bids;
+  return jsonb_build_object('ok', true, 'message', 'Bidding history cleared.');
+end;
+$$;
+
+revoke execute on function public.clear_bidding_history() from public;
+grant execute on function public.clear_bidding_history() to authenticated;

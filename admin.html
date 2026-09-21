@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Church Auction Admin</title><link rel="stylesheet" href="style.css"></head><body>
+<div class="wrap">
+<h1>⛪ Church Auction — Admin</h1>
+<div id="setupArea"></div>
+<div id="authArea"></div>
+<div id="app" class="hidden">
+  <div id="actionMsg" class="card" style="display:none"></div>
+  <div class="card">
+    <h2>Current item</h2>
+    <div class="grid">
+      <div><label>Item name</label><input id="itemName" placeholder="Enter item when announced"></div>
+      <div><label>Starting price (₹)</label><input id="startPrice" type="number" min="0" step="1" placeholder="0"></div>
+    </div>
+    <button class="primary" onclick="startItem()">START NEW ITEM</button>
+    <button onclick="waiting()">WAITING</button>
+    <button class="danger" onclick="sold()">SOLD</button>
+    <button onclick="nextItem()">NEXT ITEM</button>
+    <button class="primary" onclick="startFromBeginning()">START FROM BEGINNING</button>
+  </div>
+  <div class="card center">
+    <div id="itemLabel" class="muted">Waiting for item</div>
+    <div id="currentBid" class="big">₹0</div>
+    <div id="highest">No bidder</div>
+    <span id="status" class="status">WAITING</span>
+  </div>
+  <div class="card">
+    <h2>Offline bid</h2>
+    <p class="muted">Use this when someone at church calls out a bid.</p>
+    <div class="grid">
+      <input id="offlineName" placeholder="Bidder name">
+      <input id="offlineAmount" type="number" min="0" step="1" placeholder="Bid ₹">
+    </div>
+    <button class="good" onclick="offlineBid()">ADD OFFLINE BID</button>
+  </div>
+  <div class="card">
+    <h2>Recent bids</h2><button class="danger" onclick="clearRecentBidHistory()">CLEAR RECENT BID HISTORY</button><div id="history" class="history"></div>
+  </div>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const DEFAULT_CONFIG_KEY = "churchAuctionConfig";
+const RECENT_BIDS_CLEARED_KEY = "churchAuctionRecentBidsClearedAt";
+
+function getConfig() {
+  try { return JSON.parse(localStorage.getItem(DEFAULT_CONFIG_KEY) || "{}"); }
+  catch { return {}; }
+}
+function saveConfig(c) { localStorage.setItem(DEFAULT_CONFIG_KEY, JSON.stringify(c)); }
+
+function configBox() {
+  const c = getConfig();
+  if (c.url && c.key) return "";
+  return `
+    <div class="setup card">
+      <h2>First-time setup</h2>
+      <p>Enter your Supabase Project URL and Publishable key. This is saved only in this browser.</p>
+      <input id="sbUrl" placeholder="https://your-project.supabase.co" />
+      <input id="sbKey" placeholder="sb_publishable_..." />
+      <button onclick="saveSupabaseConfig()">Save & continue</button>
+    </div>`;
+}
+window.saveSupabaseConfig = () => {
+  const url = document.getElementById("sbUrl").value.trim().replace(/\/$/,"");
+  const key = document.getElementById("sbKey").value.trim();
+  if (!url || !key) return alert("Enter both values.");
+  saveConfig({url,key});
+  location.reload();
+};
+
+function money(v) {
+  return "₹" + Number(v || 0).toLocaleString("en-IN", {maximumFractionDigits: 2});
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+</script>
+<script>
+let sb, channel;
+function authBox(){
+  return `
+    <div class="setup card">
+      <h2>Admin login</h2>
+      <p class="muted">Sign in with the Supabase Auth user created for this auction.</p>
+      <input id="adminEmail" type="email" placeholder="Admin email">
+      <input id="adminPassword" type="password" placeholder="Password">
+      <button class="primary" onclick="adminLogin()">LOGIN</button>
+      <p id="loginMsg" class="small error"></p>
+    </div>`;
+}
+window.adminLogin = async () => {
+  const email=document.getElementById("adminEmail").value.trim();
+  const password=document.getElementById("adminPassword").value;
+  const msg=document.getElementById("loginMsg");
+  msg.textContent="";
+  if(!email||!password){msg.textContent="Enter email and password.";return;}
+  const {error}=await sb.auth.signInWithPassword({email,password});
+  if(error){msg.textContent=error.message;return;}
+  location.reload();
+};
+window.adminLogout = async () => {
+  await sb.auth.signOut();
+  location.reload();
+};
+
+async function init(){
+  const c=getConfig();
+
+  if(!c.url||!c.key)return;
+  sb=supabase.createClient(c.url,c.key);
+  const {data:{session},error:sessionError}=await sb.auth.getSession();
+  if(sessionError){document.getElementById("authArea").innerHTML=`<div class="card error">${esc(sessionError.message)}</div>`;return;}
+  if(!session){
+    document.getElementById("authArea").innerHTML=authBox();
+    return;
+  }
+  document.getElementById("authArea").innerHTML='<div class="card"><button onclick="adminLogout()">LOG OUT</button></div>';
+  document.getElementById("app").classList.remove("hidden");
+  await refresh();
+  channel=sb.channel("auction-live").on("postgres_changes",{event:"*",schema:"public",table:"auction_state"},refresh).on("postgres_changes",{event:"*",schema:"public",table:"bids"},loadBids).subscribe();
+}
+async function getState(){const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();if(error)throw error;return data}
+function showMsg(msg,ok=false){const el=document.getElementById("actionMsg");if(!el)return;el.style.display="block";el.textContent=msg;el.className="card "+(ok?"success":"error");}
+async function refresh(){try{const a=await getState();render(a);await loadBids()}catch(e){showMsg("Read failed: "+(e.message||e));}}
+function render(a){
+ document.getElementById("itemLabel").textContent=`Item ${a.item_number}: ${a.item_name}`;
+ document.getElementById("currentBid").textContent=money(a.current_bid);
+ document.getElementById("highest").textContent=a.highest_bidder?`${esc(a.highest_bidder)} (${a.highest_bid_source})`:"No bidder";
+ document.getElementById("status").textContent=a.status.toUpperCase();
+}
+async function update(fields){
+ try {
+  showMsg("Saving…");
+  const {data,error}=await sb.from("auction_state").update({...fields,updated_at:new Date().toISOString()}).eq("id",1).select("*").single();
+  if(error){showMsg("Update failed: "+error.message); console.error("auction_state update",error); return false;}
+  render(data); await loadBids(); showMsg("Saved successfully. TV should update now.",true); return true;
+ } catch(e){showMsg("Update failed: "+(e.message||e)); console.error(e); return false;}
+}
+async function startItem(){
+ try {
+  const name=document.getElementById("itemName").value.trim(); const start=Number(document.getElementById("startPrice").value);
+  if(!name || !Number.isFinite(start) || start<0){showMsg("Enter item name and starting price."); return;}
+  await update({item_name:name,starting_bid:start,current_bid:start,highest_bidder:null,highest_bid_source:null,status:"open"});
+ } catch(e){showMsg("START NEW ITEM failed: "+(e.message||e)); console.error(e);}
+}
+async function waiting(){await update({status:"waiting"})}
+async function sold(){const a=await getState();if(a.status!=="open")return alert("No open auction.");await update({status:"sold"})}
+async function nextItem(){const a=await getState();await update({item_number:a.item_number+1,item_name:"Waiting for next item",starting_bid:0,current_bid:0,highest_bidder:null,highest_bid_source:null,status:"waiting"})}
+async function startFromBeginning(){
+  if(!confirm("Start the auction again from item 1? The bidding history will be kept."))return;
+  await update({item_number:1,item_name:"Waiting for next item",starting_bid:0,current_bid:0,highest_bidder:null,highest_bid_source:null,status:"waiting"});
+}
+async function clearRecentBidHistory(){
+  if(!confirm("Clear the Recent Bids list on this admin page?"))return;
+  const clearedAt=Date.now();
+  localStorage.setItem(RECENT_BIDS_CLEARED_KEY,String(clearedAt));
+  const history=document.getElementById("history");
+  if(history) history.innerHTML="";
+  showMsg("Recent bids cleared.",true);
+}
+async function offlineBid(){
+ const a=await getState();const name=document.getElementById("offlineName").value.trim();const amount=Number(document.getElementById("offlineAmount").value);
+ if(!name||!amount)return alert("Enter bidder name and amount.");
+ const {data,error}=await sb.rpc("place_bid",{p_item_number:a.item_number,p_bidder_name:name,p_amount:amount,p_source:"offline"});
+ if(error)alert(error.message);else if(!data.ok)alert(data.message);else{document.getElementById("offlineAmount").value="";refresh()}
+}
+async function loadBids(){
+ if(!sb)return;
+ const {data,error}=await sb.from("bids").select("*").order("created_at",{ascending:false}).limit(30);
+ if(error)return;
+ const clearedAt=Number(localStorage.getItem(RECENT_BIDS_CLEARED_KEY)||0);
+ const visible=(data||[]).filter(b=>{
+   if(!clearedAt) return true;
+   const t=Date.parse(b.created_at||"");
+   return Number.isNaN(t) ? false : t>clearedAt;
+ });
+ document.getElementById("history").innerHTML=visible.map(b=>`<div><b>${esc(b.bidder_name)}</b> — ${money(b.amount)} <span class="muted">(${b.source})</span></div>`).join("");
+}
+init();
+</script>
+<script>
+/* Automatic live refresh: keeps this screen synchronized without manual browser refresh. */
+setInterval(() => {
+  try {
+    if (typeof refresh === "function") refresh();
+  } catch (e) {
+    console.warn("Automatic refresh failed:", e);
+  }
+}, 1000);
+</script>
+
+</body></html>

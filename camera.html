@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Church Auction Camera</title><link rel="stylesheet" href="style.css"></head>
+<body><style>
+#cameraPassGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#0b1220;color:#fff}
+#cameraPassGate .pass-box{width:min(92vw,400px);padding:28px;border-radius:18px;background:#151f33;text-align:center;box-shadow:0 10px 40px #0008}
+#cameraPassGate input{width:100%;box-sizing:border-box;padding:15px;margin:14px 0;border-radius:10px;border:0;font-size:24px;text-align:center;letter-spacing:7px;background:#eef2f7;color:#111}
+#cameraPassGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700;background:#ffd54a;color:#111}
+#cameraPassGate .err{color:#ff8c8c;min-height:22px;margin-top:10px}
+body.camera-locked>*:not(#cameraPassGate){visibility:hidden}
+</style>
+<div id="cameraPassGate">
+  <div class="pass-box">
+    <h2>🔐 Camera Access</h2>
+    <p class="muted">Enter the camera passkey to continue.</p>
+    <input id="cameraPassInput" type="password" inputmode="numeric" maxlength="6" autocomplete="off" autofocus>
+    <button id="cameraPassBtn">UNLOCK CAMERA</button>
+    <div id="cameraPassErr" class="err"></div>
+  </div>
+</div>
+<script>
+document.body.classList.add('camera-locked');
+(function(){
+  const PASSKEY='2580';
+  const gate=document.getElementById('cameraPassGate'), input=document.getElementById('cameraPassInput');
+  const btn=document.getElementById('cameraPassBtn'), err=document.getElementById('cameraPassErr');
+  function unlock(){
+    if(input.value===PASSKEY){
+      sessionStorage.setItem('churchAuctionCameraUnlocked','1');
+      gate.remove(); document.body.classList.remove('camera-locked');
+    }else{
+      err.textContent='Incorrect passkey.'; input.value=''; input.focus();
+    }
+  }
+  btn.onclick=unlock;
+  input.onkeydown=e=>{if(e.key==='Enter')unlock()};
+  if(sessionStorage.getItem('churchAuctionCameraUnlocked')==='1'){
+    gate.remove(); document.body.classList.remove('camera-locked');
+  }
+})();
+</script>
+
+<div class="wrap">
+<h1>📱 Church Auction Camera</h1>
+<div id="setupArea"></div><div id="authArea"></div>
+<div id="app" class="hidden">
+  <div class="card center">
+    <h2>Live Product Camera</h2>
+    <video id="preview" autoplay muted playsinline></video>
+    <div><button class="primary" id="startBtn" onclick="startCamera()">START CAMERA</button><button id="stopBtn" onclick="stopCamera()" class="hidden">STOP CAMERA</button></div>
+    <p id="camMsg" class="small muted">Point this phone at the product. Keep this page open during the auction.</p>
+  </div>
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const KEY='churchAuctionConfig', ROOM='church-auction-camera-v1'; let sb, channel, stream=null, peers=new Map(); let cameraUser=null;
+function cfg(){try{const saved=JSON.parse(localStorage.getItem(KEY)||"{}");return saved.url&&saved.key?saved:{url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}catch{return {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}}
+function save(c){localStorage.setItem(KEY,JSON.stringify(c))}
+function box(){const c=cfg();if(c.url&&c.key)return '';return `<div class="setup card"><h2>First-time setup</h2><input id="sbUrl" placeholder="https://your-project.supabase.co"><input id="sbKey" placeholder="sb_publishable_..."><button onclick="saveCfg()">Save & continue</button></div>`}
+window.saveCfg=()=>{const url=document.getElementById('sbUrl').value.trim().replace(/\/$/,'');const key=document.getElementById('sbKey').value.trim();if(!url||!key)return alert('Enter both values.');save({url,key});location.reload()}
+function authBox(){return `<div class="setup card"><h2>Camera admin login</h2><p class="muted">Sign in with the same Supabase admin account used for the auction.</p><input id="email" type="email" placeholder="Admin email"><input id="pass" type="password" placeholder="Password"><button class="primary" onclick="login()">LOGIN</button><p id="loginMsg" class="small error"></p></div>`}
+window.login=async()=>{const msg=document.getElementById('loginMsg');const {error}=await sb.auth.signInWithPassword({email:document.getElementById('email').value.trim(),password:document.getElementById('pass').value});if(error)msg.textContent=error.message;else location.reload()}
+async function init(){document.getElementById('setupArea').innerHTML=box();const c=cfg();if(!c.url||!c.key)return;sb=supabase.createClient(c.url,c.key);const {data:{session}}=await sb.auth.getSession();if(!session){document.getElementById('authArea').innerHTML=authBox();return;}cameraUser=session.user;document.getElementById('authArea').innerHTML='<div class="card"><button onclick="logout()">LOG OUT</button></div>';document.getElementById('app').classList.remove('hidden');channel=sb.channel(ROOM,{config:{broadcast:{ack:true}}});channel.on('broadcast',{event:'join'},async ({payload})=>{if(!stream)return;await makeOffer(payload.id)}).on('broadcast',{event:'answer'},async ({payload})=>{const pc=peers.get(payload.id);if(pc)await pc.setRemoteDescription(payload.description)}).on('broadcast',{event:'ice'},async ({payload})=>{const pc=peers.get(payload.id);if(pc&&payload.candidate)try{await pc.addIceCandidate(payload.candidate)}catch(e){}}).subscribe()}
+window.logout=async()=>{stopCamera();await sb.auth.signOut();location.reload()}
+async function startCamera(){try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});document.getElementById('preview').srcObject=stream;document.getElementById('startBtn').classList.add('hidden');document.getElementById('stopBtn').classList.remove('hidden');document.getElementById('camMsg').textContent='LIVE — remote viewers can now see this camera.';}catch(e){document.getElementById('camMsg').textContent='Camera error: '+e.message;}}
+async function makeOffer(id){if(peers.has(id))peers.get(id).close();const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});peers.set(id,pc);stream.getTracks().forEach(t=>pc.addTrack(t,stream));pc.onicecandidate=e=>{if(e.candidate)channel.send({type:'broadcast',event:'ice',payload:{id,candidate:e.candidate}})};const offer=await pc.createOffer();await pc.setLocalDescription(offer);await channel.send({type:'broadcast',event:'offer',payload:{id,description:pc.localDescription}})}
+window.stopCamera=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;for(const pc of peers.values())pc.close();peers.clear();document.getElementById('preview').srcObject=null;document.getElementById('startBtn').classList.remove('hidden');document.getElementById('stopBtn').classList.add('hidden');document.getElementById('camMsg').textContent='Camera stopped.'}
+init();
+</script></body></html>
