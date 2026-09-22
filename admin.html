@@ -123,7 +123,7 @@ async function init(){
   document.getElementById("authArea").innerHTML='<div class="card"><button onclick="adminLogout()">LOG OUT</button></div>';
   document.getElementById("app").classList.remove("hidden");
   await refresh();
-  channel=sb.channel("auction-live").on("postgres_changes",{event:"*",schema:"public",table:"auction_state"},refresh).on("postgres_changes",{event:"*",schema:"public",table:"bids"},loadBids).subscribe();
+  channel=sb.channel("auction-live-admin").on("postgres_changes",{event:"UPDATE",schema:"public",table:"auction_state",filter:"id=eq.1"},p=>{if(p.new)render(p.new)}).on("postgres_changes",{event:"INSERT",schema:"public",table:"bids"},loadBids).subscribe();
 }
 async function getState(){const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();if(error)throw error;return data}
 function showMsg(msg,ok=false){const el=document.getElementById("actionMsg");if(!el)return;el.style.display="block";el.textContent=msg;el.className="card "+(ok?"success":"error");}
@@ -184,51 +184,5 @@ async function loadBids(){
 }
 init();
 </script>
-<script>
-/* Automatic live refresh: keeps this screen synchronized without manual browser refresh. */
-setInterval(() => {
-  try {
-    if (typeof refresh === "function") refresh();
-  } catch (e) {
-    console.warn("Automatic refresh failed:", e);
-  }
-}, 1000);
-</script>
 
-<section class="card" id="buyerHistoryCard">
-<h2>🧾 Buyer History</h2>
-<button class="danger" onclick="clearBuyerHistory()">CLEAR BUYER HISTORY</button>
-<div class="table-wrap"><table class="history-table">
-<thead><tr><th>Buyer Name</th><th>Gmail</th><th>Item Name</th><th>Amount</th></tr></thead>
-<tbody id="buyerHistoryBody"><tr><td colspan="4">Loading...</td></tr></tbody>
-</table></div></section>
-<script>
-async function clearBuyerHistory(){
- if(!confirm("Clear ALL buyer history? This will permanently delete the saved bidding history."))return;
- const {data,error}=await sb.rpc("clear_bidding_history");
- if(error){showMsg("Unable to clear buyer history: "+error.message);return;}
- if(!data || !data.ok){showMsg((data&&data.message)||"Unable to clear buyer history.");return;}
- const body=document.getElementById("buyerHistoryBody");
- if(body)body.innerHTML='<tr><td colspan="4">No bids yet</td></tr>';
- const history=document.getElementById("history");
- if(history)history.innerHTML="";
- showMsg("Buyer history cleared successfully.",true);
-}
-async function loadBuyerHistory(){
- if(!sb)return;
- const {data,error}=await sb.from("bids").select("*").order("created_at",{ascending:false}).limit(100);
- const body=document.getElementById("buyerHistoryBody");
- if(!body)return;
- if(error){body.innerHTML='<tr><td colspan="4">Unable to load history</td></tr>';return;}
- if(!data||!data.length){body.innerHTML='<tr><td colspan="4">No bids yet</td></tr>';return;}
- body.innerHTML=data.map(r=>{
-   const parts=String(r.bidder_name||"").split("|||");
-   const name=esc(parts[0]||"");
-   const email=esc(parts[1]||"");
-   const item=esc(r.item_name || ("Item #"+(r.item_number??"")));
-   const amount=money(r.amount);
-   return `<tr><td>${name}</td><td>${email}</td><td>${item}</td><td>${amount}</td></tr>`;
- }).join("");
-}
-</script>
-<script>setTimeout(loadBuyerHistory,1000);setInterval(loadBuyerHistory,3000);</script></body></html>
+</body></html>

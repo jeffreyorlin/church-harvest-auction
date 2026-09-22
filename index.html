@@ -1,8 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Church Auction</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -19,6 +18,60 @@
       <p><a href="admin.html"><button>ADMIN</button></a></p>
     </div>
   </div>
+
+  <section class="card buyer-history-home">
+    <div class="buyer-history-heading">
+      <div>
+        <h2>🧾 Buyer History</h2>
+        <p class="muted small">Live auction buyer and bid records.</p>
+      </div>
+      <button class="danger" onclick="clearBuyerHistory()">CLEAR BUYER HISTORY</button>
+    </div>
+    <div class="table-wrap">
+      <table class="history-table buyer-history-table">
+        <thead><tr><th>Buyer Name</th><th>Type</th><th>Item Name</th><th>Amount</th><th>Gmail</th><th>Address</th></tr></thead>
+        <tbody id="buyerHistoryBody"><tr><td colspan="6">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </section>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const CONFIG_KEY='churchAuctionConfig';
+const EMBEDDED_CONFIG={url:'https://dcgtufrwqvuuyrlouepu.supabase.co',key:'sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt'};
+function getConfig(){try{const saved=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}');return saved.url&&saved.key?saved:EMBEDDED_CONFIG}catch{return EMBEDDED_CONFIG}}
+function money(v){return '₹'+Number(v||0).toLocaleString('en-IN',{maximumFractionDigits:2})}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+let sb,homeChannel;
+async function clearBuyerHistory(){
+  const password=window.prompt('Enter password to clear Buyer History:');
+  if(password===null)return;
+  if(password!=='1206'){alert('Incorrect password.');return;}
+  if(!confirm('Clear ALL Buyer History? This permanently removes the buyer records from the database.'))return;
+  const {data,error}=await sb.rpc('clear_buyer_history',{p_password:password});
+  if(error){alert('Could not clear Buyer History: '+error.message);return;}
+  if(!data?.ok){alert(data?.message||'Could not clear Buyer History.');return;}
+  await loadBuyerHistory();
+  alert('Buyer History cleared successfully.');
+}
+
+async function loadBuyerHistory(){
+  if(!sb)return;
+  const {data,error}=await sb.from('bids').select('item_number,item_name,bidder_name,bidder_email,bidder_address,amount,source,created_at').order('created_at',{ascending:false}).limit(200);
+  const body=document.getElementById('buyerHistoryBody');if(!body)return;
+  if(error){body.innerHTML=`<tr><td colspan="6">Unable to load buyer history. Please run the included buyer_history_migration.sql / google_bidding.sql in Supabase.</td></tr>`;return;}
+  if(!data||!data.length){body.innerHTML='<tr><td colspan="6">No buyer records yet.</td></tr>';return;}
+  body.innerHTML=data.map(r=>{
+    const rawName=String(r.bidder_name||'');
+    const name=rawName.includes('|||')?rawName.split('|||')[0]:rawName;
+    const type=String(r.source||'').toLowerCase()==='online'?'ONLINE':'OFFLINE';
+    const email=type==='ONLINE'?(r.bidder_email||'—'):'—';
+    const address=type==='ONLINE'?(r.bidder_address||'—'):'—';
+    const item=r.item_name||('Item #'+(r.item_number??''));
+    return `<tr><td>${esc(name)}</td><td><span class="history-source ${type.toLowerCase()}">${type}</span></td><td>${esc(item)}</td><td>${money(r.amount)}</td><td>${esc(email)}</td><td>${esc(address)}</td></tr>`;
+  }).join('');
+}
+(async function(){const c=getConfig();sb=supabase.createClient(c.url,c.key);await loadBuyerHistory();homeChannel=sb.channel('buyer-history-home').on('postgres_changes',{event:'*',schema:'public',table:'bids'},loadBuyerHistory).subscribe();})();
+</script>
 </body>
 </html>
