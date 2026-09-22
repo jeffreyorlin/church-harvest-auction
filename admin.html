@@ -45,8 +45,12 @@ const DEFAULT_CONFIG_KEY = "churchAuctionConfig";
 const RECENT_BIDS_CLEARED_KEY = "churchAuctionRecentBidsClearedAt";
 
 function getConfig() {
-  try { return JSON.parse(localStorage.getItem(DEFAULT_CONFIG_KEY) || "{}"); }
-  catch { return {}; }
+  try {
+    const saved = JSON.parse(localStorage.getItem(DEFAULT_CONFIG_KEY) || "{}");
+    return saved.url && saved.key ? saved : {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};
+  } catch {
+    return {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};
+  }
 }
 function saveConfig(c) { localStorage.setItem(DEFAULT_CONFIG_KEY, JSON.stringify(c)); }
 

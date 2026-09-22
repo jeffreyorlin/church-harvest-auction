@@ -4,7 +4,7 @@
 <title>Church Auction Bidding</title><link rel="stylesheet" href="style.css"></head>
 <body>
 <div class="wrap">
-<div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🎉 SOLD OUT!</div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
+<div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD!</div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
 <h1>⛪ Live Church Auction</h1>
 <div id="setupArea"></div>
 <div id="app" class="hidden">
@@ -21,12 +21,20 @@
     <div id="cameraStatus" class="cameraStatus muted">Waiting for church camera…</div>
   </div>
 
-  <div id="profileCard" class="card">
+  <div id="loginCard" class="card center">
+    <h2>🔐 Gmail Login</h2>
+    <p class="muted">Sign in with Google to participate in the auction.</p>
+    <button class="primary" onclick="googleLogin()">CONTINUE WITH GOOGLE</button>
+    <p id="loginMsg" class="small"></p>
+  </div>
+
+  <div id="profileCard" class="card hidden">
     <h2>👤 Bidder Details</h2>
-    <p class="muted">Enter your name and address to participate in the auction.</p>
+    <p class="muted">Enter your own name and address. Your Google account name will NOT be used.</p>
     <input id="profileName" type="text" placeholder="Enter your full name">
     <textarea id="profileAddress" rows="3" placeholder="Enter your address"></textarea>
     <button class="primary" onclick="saveProfile()">CONTINUE TO BIDDING</button>
+    <button onclick="googleLogout()">LOG OUT</button>
     <p id="profileMsg" class="small"></p>
   </div>
 
@@ -57,27 +65,67 @@ async function init(){
  const c=getConfig();
  if(!c.url||!c.key)return;
  sb=supabase.createClient(c.url,c.key);
+
+ const {data:{session}} = await sb.auth.getSession();
+
  document.getElementById("app").classList.remove("hidden");
- loadProfile();
+ if(session){
+   showBidderDetails();
+ }else{
+   showGoogleLogin();
+ }
+
  await refresh();
  setupCameraViewer();
  channel=sb.channel("auction-live").on("postgres_changes",{event:"UPDATE",schema:"public",table:"auction_state",filter:"id=eq.1"},refresh).subscribe();
  setInterval(refresh,1000);
+
+ sb.auth.onAuthStateChange((_event, newSession)=>{
+   if(newSession) showBidderDetails();
+   else showGoogleLogin();
+ });
 }
 
-function loadProfile(){
+function showGoogleLogin(){
+ document.getElementById("loginCard").classList.remove("hidden");
+ document.getElementById("profileCard").classList.add("hidden");
+ document.getElementById("bidCard").classList.add("hidden");
+}
+
+function showBidderDetails(){
+ document.getElementById("loginCard").classList.add("hidden");
+ document.getElementById("profileCard").classList.remove("hidden");
+
  bidderName=localStorage.getItem("churchAuctionBidderName")||"";
  bidderAddress=localStorage.getItem("churchAuctionBidderAddress")||"";
+
  document.getElementById("profileName").value=bidderName;
  document.getElementById("profileAddress").value=bidderAddress;
+
  if(bidderName.trim() && bidderAddress.trim()){
    document.getElementById("profileCard").classList.add("hidden");
    document.getElementById("bidCard").classList.remove("hidden");
    document.getElementById("userName").textContent=bidderName;
- }else{
-   document.getElementById("profileCard").classList.remove("hidden");
-   document.getElementById("bidCard").classList.add("hidden");
  }
+}
+
+window.googleLogin=async()=>{
+ const redirectTo=window.location.href.split("#")[0];
+ const {error}=await sb.auth.signInWithOAuth({
+   provider:"google",
+   options:{redirectTo}
+ });
+ if(error) document.getElementById("loginMsg").textContent="❌ "+error.message;
+};
+
+window.googleLogout=async()=>{
+ localStorage.removeItem("churchAuctionBidderName");
+ localStorage.removeItem("churchAuctionBidderAddress");
+ await sb.auth.signOut();
+};
+
+function loadProfile(){
+ showBidderDetails();
 }
 
 window.saveProfile=()=>{
@@ -103,9 +151,11 @@ async function refresh(){
  document.getElementById("currentBid").textContent=money(data.current_bid);
  document.getElementById("highest").textContent=data.highest_bidder?`${data.highest_bidder} (${data.highest_bid_source})`:"No bidder";
  document.getElementById("status").textContent=data.status.toUpperCase();
- const sold = String(data.status).toLowerCase()==="sold" || String(data.status).toLowerCase()==="sold_out";
- document.getElementById("soldOverlay").classList.toggle("show",sold);
- document.getElementById("soldSub").textContent=data.highest_bidder?`Winner: ${data.highest_bidder} • ${money(data.current_bid)}`:"Item sold successfully";
+ const sold = ["sold","sold_out"].includes(String(data.status).toLowerCase());
+ document.getElementById("soldOverlay").classList.toggle("show", sold);
+ document.getElementById("soldSub").textContent = sold
+   ? (data.highest_bidder ? `Winner: ${data.highest_bidder} • ${money(data.current_bid)}` : "Item sold successfully")
+   : "";
 }
 
 async function bid(){
