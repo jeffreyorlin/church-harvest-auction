@@ -47,14 +47,33 @@ document.body.classList.add('camera-locked');
 <div id="app" class="hidden">
   <div class="card center">
     <h2>Live Product Camera</h2>
-    <video id="preview" autoplay muted playsinline></video>
+    <div class="camera-preview-wrap">
+      <video id="sourceVideo" autoplay muted playsinline class="hidden"></video>
+      <canvas id="previewCanvas" class="cameraPreviewCanvas"></canvas>
+      <video id="preview" autoplay muted playsinline class="hidden"></video>
+    </div>
+    <div class="camera-tools">
+      <div class="camera-tool-row">
+        <label for="zoomRange">Zoom</label>
+        <input id="zoomRange" type="range" min="1" max="4" step="0.1" value="1" oninput="setZoom(this.value)" disabled>
+        <span id="zoomValue">1.0×</span>
+      </div>
+      <div class="camera-tool-row camera-rotate-row">
+        <span>Rotate</span>
+        <button type="button" onclick="rotateCamera(-90)" disabled class="rotateBtn">↶ 90°</button>
+        <button type="button" onclick="rotateCamera(90)" disabled class="rotateBtn">↷ 90°</button>
+        <button type="button" onclick="resetCameraView()" disabled class="rotateBtn">RESET</button>
+        <span id="rotateValue">0°</span>
+      </div>
+    </div>
     <div><button class="primary" id="startBtn" onclick="startCamera()">START CAMERA</button><button id="stopBtn" onclick="stopCamera()" class="hidden">STOP CAMERA</button></div>
-    <p id="camMsg" class="small muted">Point this phone at the product. Keep this page open during the auction.</p>
+    <p id="camMsg" class="small muted">Point this phone at the product. Zoom and rotation are sent live to the TV.</p>
   </div>
 </div></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const KEY='churchAuctionConfig', ROOM='church-auction-camera-v1'; let sb, channel, stream=null, peers=new Map(); let cameraUser=null, peerIce=new Map();
+let sourceVideo=null, previewCanvas=null, drawCtx=null, drawTimer=null, canvasStream=null, zoom=1, rotation=0, cameraStarted=false;
 function cfg(){try{const saved=JSON.parse(localStorage.getItem(KEY)||"{}");return saved.url&&saved.key?saved:{url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}catch{return {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}}
 function save(c){localStorage.setItem(KEY,JSON.stringify(c))}
 function box(){const c=cfg();if(c.url&&c.key)return '';return `<div class="setup card"><h2>First-time setup</h2><input id="sbUrl" placeholder="https://your-project.supabase.co"><input id="sbKey" placeholder="sb_publishable_..."><button onclick="saveCfg()">Save & continue</button></div>`}
@@ -63,20 +82,95 @@ function authBox(){return `<div class="setup card"><h2>Camera admin login</h2><p
 window.login=async()=>{const msg=document.getElementById('loginMsg');const {error}=await sb.auth.signInWithPassword({email:document.getElementById('email').value.trim(),password:document.getElementById('pass').value});if(error)msg.textContent=error.message;else location.reload()}
 async function init(){document.getElementById('setupArea').innerHTML=box();const c=cfg();if(!c.url||!c.key)return;sb=supabase.createClient(c.url,c.key);const {data:{session}}=await sb.auth.getSession();if(!session){document.getElementById('authArea').innerHTML=authBox();return;}cameraUser=session.user;document.getElementById('authArea').innerHTML='<div class="card"><button onclick="logout()">LOG OUT</button></div>';document.getElementById('app').classList.remove('hidden');channel=sb.channel(ROOM,{config:{broadcast:{ack:true}}});channel.on('broadcast',{event:'join'},async ({payload})=>{if(!stream||!payload?.id)return;await makeOffer(payload.id)}).on('broadcast',{event:'answer'},async ({payload})=>{const pc=peers.get(payload.id);if(!pc)return;try{await pc.setRemoteDescription(payload.description);const queued=peerIce.get(payload.id)||[];for(const c of queued)try{await pc.addIceCandidate(c)}catch(e){}peerIce.set(payload.id,[])}catch(e){}}).on('broadcast',{event:'ice'},async ({payload})=>{if(!payload?.id||!payload.candidate)return;const pc=peers.get(payload.id);if(!pc||!pc.remoteDescription){if(!peerIce.has(payload.id))peerIce.set(payload.id,[]);peerIce.get(payload.id).push(payload.candidate);return;}try{await pc.addIceCandidate(payload.candidate)}catch(e){}}).subscribe()}
 window.logout=async()=>{stopCamera();await sb.auth.signOut();location.reload()}
-async function startCamera(){try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});document.getElementById('preview').srcObject=stream;document.getElementById('startBtn').classList.add('hidden');document.getElementById('stopBtn').classList.remove('hidden');document.getElementById('camMsg').textContent='LIVE — remote viewers can now see this camera.';}catch(e){document.getElementById('camMsg').textContent='Camera error: '+e.message;}}
+async function startCamera(){
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    sourceVideo=document.getElementById('sourceVideo');
+    previewCanvas=document.getElementById('previewCanvas');
+    drawCtx=previewCanvas.getContext('2d');
+    sourceVideo.srcObject=stream;
+    await sourceVideo.play();
+    if(!sourceVideo.videoWidth){await new Promise(resolve=>{sourceVideo.onloadedmetadata=resolve;});}
+    resizePreviewCanvas();
+    canvasStream=previewCanvas.captureStream(30);
+    if(!canvasStream.getVideoTracks().length) throw new Error('This browser does not support live camera transformation.');
+    cameraStarted=true;
+    startDrawLoop();
+    document.getElementById('zoomRange').value='1';
+    setZoom(1);
+    document.getElementById('rotateValue').textContent='0°';
+    document.querySelectorAll('.camera-tools input,.camera-tools button').forEach(el=>el.disabled=false);
+    document.getElementById('startBtn').classList.add('hidden');
+    document.getElementById('stopBtn').classList.remove('hidden');
+    document.getElementById('camMsg').textContent='LIVE — zoom and rotation are sent live to the TV.';
+  }catch(e){document.getElementById('camMsg').textContent='Camera error: '+e.message;stopCamera();}
+}
+function resizePreviewCanvas(){
+  if(!previewCanvas||!sourceVideo)return;
+  const w=sourceVideo.videoWidth||1280,h=sourceVideo.videoHeight||720;
+  previewCanvas.width=(rotation%180===90)?h:w;
+  previewCanvas.height=(rotation%180===90)?w:h;
+}
+function startDrawLoop(){
+  if(drawTimer)cancelAnimationFrame(drawTimer);
+  const draw=()=>{
+    if(!cameraStarted||!sourceVideo||!drawCtx)return;
+    resizePreviewCanvas();
+    const sw=sourceVideo.videoWidth||1280, sh=sourceVideo.videoHeight||720;
+    const cw=previewCanvas.width, ch=previewCanvas.height;
+    drawCtx.save();
+    drawCtx.clearRect(0,0,cw,ch);
+    drawCtx.translate(cw/2,ch/2);
+    drawCtx.rotate(rotation*Math.PI/180);
+    const scale=Math.max(cw/sw,ch/sh)*zoom;
+    drawCtx.scale(scale,scale);
+    drawCtx.drawImage(sourceVideo,-sw/2,-sh/2,sw,sh);
+    drawCtx.restore();
+    drawTimer=requestAnimationFrame(draw);
+  };
+  draw();
+}
+function setZoom(v){
+  zoom=Math.max(1,Math.min(4,Number(v)||1));
+  const value=document.getElementById('zoomValue');if(value)value.textContent=zoom.toFixed(1)+'×';
+}
+function rotateCamera(delta){
+  rotation=(rotation+delta+360)%360;
+  const value=document.getElementById('rotateValue');if(value)value.textContent=rotation+'°';
+  resizePreviewCanvas();
+}
+function resetCameraView(){
+  rotation=0;setZoom(1);
+  const r=document.getElementById('zoomRange');if(r)r.value='1';
+  const v=document.getElementById('rotateValue');if(v)v.textContent='0°';
+  resizePreviewCanvas();
+}
 async function makeOffer(id){
   if(!stream||!channel)return;
   if(peers.has(id))peers.get(id).close();
   peerIce.set(id,[]);
   const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
   peers.set(id,pc);
-  stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  canvasStream?.getVideoTracks().forEach(t=>pc.addTrack(t,canvasStream));
   pc.onicecandidate=e=>{if(e.candidate)channel.send({type:'broadcast',event:'ice',payload:{id,candidate:e.candidate}})};
   pc.onconnectionstatechange=()=>{if(['failed','closed'].includes(pc.connectionState)){peers.delete(id);peerIce.delete(id)}};
   const offer=await pc.createOffer();await pc.setLocalDescription(offer);
   await channel.send({type:'broadcast',event:'offer',payload:{id,description:pc.localDescription}});
   const queued=peerIce.get(id)||[];for(const c of queued)try{await pc.addIceCandidate(c)}catch(e){}peerIce.set(id,[]);
 }
-window.stopCamera=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;for(const pc of peers.values())pc.close();peers.clear();peerIce.clear();document.getElementById('preview').srcObject=null;document.getElementById('startBtn').classList.remove('hidden');document.getElementById('stopBtn').classList.add('hidden');document.getElementById('camMsg').textContent='Camera stopped.'}
+window.stopCamera=()=>{
+  cameraStarted=false;
+  if(drawTimer)cancelAnimationFrame(drawTimer);drawTimer=null;
+  if(canvasStream)canvasStream.getTracks().forEach(t=>t.stop());canvasStream=null;
+  if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;
+  for(const pc of peers.values())pc.close();peers.clear();peerIce.clear();
+  const source=document.getElementById('sourceVideo');if(source)source.srcObject=null;
+  const preview=document.getElementById('preview');if(preview)preview.srcObject=null;
+  document.getElementById('startBtn').classList.remove('hidden');
+  document.getElementById('stopBtn').classList.add('hidden');
+  document.querySelectorAll('.camera-tools input,.camera-tools button').forEach(el=>el.disabled=true);
+  document.getElementById('camMsg').textContent='Camera stopped.';
+}
+
 init();
 </script></body></html>
