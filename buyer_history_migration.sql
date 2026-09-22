@@ -71,3 +71,51 @@ grant execute on function public.clear_buyer_history(text) to anon, authenticate
 
 -- Backfill the historical item name when it can be inferred only for the current item.
 update public.bids b set item_name=a.item_name from public.auction_state a where b.item_name is null and b.item_number=a.item_number;
+
+-- Separate protected Buyer History page. The password is checked server-side.
+create or replace function public.get_buyer_history(p_password text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  rows jsonb;
+begin
+  if p_password is distinct from '12062009' then
+    return jsonb_build_object('ok', false, 'message', 'Incorrect password.');
+  end if;
+
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc), '[]'::jsonb)
+  into rows
+  from (
+    select item_number,item_name,bidder_name,bidder_email,bidder_address,amount,source,created_at
+    from public.bids
+    order by created_at desc
+    limit 500
+  ) x;
+
+  return jsonb_build_object('ok', true, 'rows', rows);
+end;
+$$;
+
+create or replace function public.clear_buyer_history(p_password text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_password is distinct from '12062009' then
+    return jsonb_build_object('ok', false, 'message', 'Incorrect password.');
+  end if;
+
+  delete from public.bids where true;
+  return jsonb_build_object('ok', true, 'message', 'Buyer History cleared.');
+end;
+$$;
+
+revoke execute on function public.get_buyer_history(text) from public, anon, authenticated;
+grant execute on function public.get_buyer_history(text) to anon, authenticated;
+revoke execute on function public.clear_buyer_history(text) from public, anon, authenticated;
+grant execute on function public.clear_buyer_history(text) to anon, authenticated;

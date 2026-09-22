@@ -100,3 +100,48 @@ revoke execute on function public.clear_buyer_history(text) from public;
 revoke execute on function public.clear_buyer_history(text) from anon;
 revoke execute on function public.clear_buyer_history(text) from authenticated;
 grant execute on function public.clear_buyer_history(text) to anon, authenticated;
+
+-- Separate protected Buyer History page. The password is checked server-side.
+create or replace function public.get_buyer_history(p_password text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  rows jsonb;
+begin
+  if p_password is distinct from '12062009' then
+    return jsonb_build_object('ok', false, 'message', 'Incorrect password.');
+  end if;
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc), '[]'::jsonb)
+  into rows
+  from (
+    select item_number,item_name,bidder_name,bidder_email,bidder_address,amount,source,created_at
+    from public.bids
+    order by created_at desc
+    limit 500
+  ) x;
+  return jsonb_build_object('ok', true, 'rows', rows);
+end;
+$$;
+
+create or replace function public.clear_buyer_history(p_password text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_password is distinct from '12062009' then
+    return jsonb_build_object('ok', false, 'message', 'Incorrect password.');
+  end if;
+  delete from public.bids where true;
+  return jsonb_build_object('ok', true, 'message', 'Buyer History cleared.');
+end;
+$$;
+
+revoke execute on function public.get_buyer_history(text) from public, anon, authenticated;
+grant execute on function public.get_buyer_history(text) to anon, authenticated;
+revoke execute on function public.clear_buyer_history(text) from public, anon, authenticated;
+grant execute on function public.clear_buyer_history(text) to anon, authenticated;

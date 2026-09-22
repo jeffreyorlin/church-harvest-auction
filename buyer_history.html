@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Buyer History - Church Auction</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="buyer-history-page">
+  <div id="accessCard" class="card access-card">
+    <h1>🔒 Buyer History</h1>
+    <p class="muted">Enter the password to view the buyer history.</p>
+    <input id="historyPassword" type="password" inputmode="numeric" autocomplete="off" placeholder="Password">
+    <div>
+      <button class="primary" onclick="unlockHistory()">OPEN BUYER HISTORY</button>
+      <a href="index.html"><button>BACK</button></a>
+    </div>
+    <div id="accessMessage" class="history-message hidden"></div>
+  </div>
+
+  <div id="historyPanel" class="hidden">
+    <div class="card">
+      <div class="buyer-history-header">
+        <div>
+          <h1>🧾 Buyer History</h1>
+          <p class="muted small">Private buyer and sold-bid records.</p>
+        </div>
+        <div class="buyer-history-actions">
+          <button class="danger" onclick="clearBuyerHistory()">CLEAR BUYER HISTORY</button>
+          <button onclick="logoutHistory()">LOCK PAGE</button>
+          <a href="index.html"><button>HOME</button></a>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="history-table buyer-history-table">
+          <thead><tr><th>Buyer Name</th><th>Type</th><th>Item Name</th><th>Amount</th><th>Gmail</th><th>Address</th></tr></thead>
+          <tbody id="buyerHistoryBody"><tr><td colspan="6">Enter the password to view history.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const CONFIG_KEY='churchAuctionConfig';
+const EMBEDDED_CONFIG={url:'https://dcgtufrwqvuuyrlouepu.supabase.co',key:'sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt'};
+const ACCESS_KEY='churchAuctionBuyerHistoryUnlocked';
+const ACCESS_PASSWORD='12062009';
+let sb, historyChannel, historyPassword='';
+
+function getConfig(){
+  try{const saved=JSON.parse(localStorage.getItem(CONFIG_KEY)||'{}');return saved.url&&saved.key?saved:EMBEDDED_CONFIG}catch{return EMBEDDED_CONFIG}
+}
+function money(v){return '₹'+Number(v||0).toLocaleString('en-IN',{maximumFractionDigits:2})}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function showMessage(message){
+  const el=document.getElementById('accessMessage');
+  el.textContent=message; el.classList.remove('hidden');
+}
+function renderRows(data){
+  const body=document.getElementById('buyerHistoryBody');
+  if(!body)return;
+  if(!data||!data.length){body.innerHTML='<tr><td colspan="6">No buyer records yet.</td></tr>';return;}
+  body.innerHTML=data.map(r=>{
+    const rawName=String(r.bidder_name||'');
+    const name=rawName.includes('|||')?rawName.split('|||')[0]:rawName;
+    const type=String(r.source||'').toLowerCase()==='online'?'ONLINE':'OFFLINE';
+    const email=type==='ONLINE'?(r.bidder_email||'—'):'—';
+    const address=type==='ONLINE'?(r.bidder_address||'—'):'—';
+    const item=r.item_name||('Item #'+(r.item_number??''));
+    return `<tr><td>${esc(name)}</td><td><span class="history-source ${type.toLowerCase()}">${type}</span></td><td>${esc(item)}</td><td>${money(r.amount)}</td><td>${esc(email)}</td><td>${esc(address)}</td></tr>`;
+  }).join('');
+}
+async function loadBuyerHistory(){
+  if(!sb || !historyPassword)return;
+  const {data,error}=await sb.rpc('get_buyer_history',{p_password:historyPassword});
+  const body=document.getElementById('buyerHistoryBody');
+  if(error){
+    if(body) body.innerHTML=`<tr><td colspan="6">Could not load Buyer History: ${esc(error.message)}</td></tr>`;
+    return;
+  }
+  if(!data?.ok){
+    if(body) body.innerHTML=`<tr><td colspan="6">${esc(data?.message||'Access denied.')}</td></tr>`;
+    return;
+  }
+  renderRows(data.rows||[]);
+}
+async function unlockHistory(){
+  const input=document.getElementById('historyPassword');
+  const pass=String(input.value||'');
+  if(pass!==ACCESS_PASSWORD){showMessage('Incorrect password.'); input.focus(); return;}
+  historyPassword=pass;
+  sessionStorage.setItem(ACCESS_KEY,'1');
+  document.getElementById('accessCard').classList.add('hidden');
+  document.getElementById('historyPanel').classList.remove('hidden');
+  await loadBuyerHistory();
+  historyChannel=sb.channel('private-buyer-history').on('postgres_changes',{event:'*',schema:'public',table:'bids'},loadBuyerHistory).subscribe();
+}
+function logoutHistory(){
+  sessionStorage.removeItem(ACCESS_KEY);
+  if(historyChannel)sb.removeChannel(historyChannel);
+  historyPassword='';
+  document.getElementById('historyPanel').classList.add('hidden');
+  document.getElementById('accessCard').classList.remove('hidden');
+  document.getElementById('historyPassword').value='';
+}
+async function clearBuyerHistory(){
+  if(historyPassword!==ACCESS_PASSWORD){logoutHistory();return;}
+  if(!confirm('Clear ALL Buyer History? This permanently removes the buyer records from the database.'))return;
+  const {data,error}=await sb.rpc('clear_buyer_history',{p_password:historyPassword});
+  if(error){alert('Could not clear Buyer History: '+error.message);return;}
+  if(!data?.ok){alert(data?.message||'Could not clear Buyer History.');return;}
+  await loadBuyerHistory();
+  alert('Buyer History cleared successfully.');
+}
+
+document.getElementById('historyPassword').addEventListener('keydown',e=>{if(e.key==='Enter')unlockHistory()});
+(async function(){
+  const c=getConfig();
+  sb=supabase.createClient(c.url,c.key);
+})();
+</script>
+</body>
+</html>
