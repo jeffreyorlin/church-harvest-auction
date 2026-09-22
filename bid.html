@@ -4,7 +4,7 @@
 <title>Church Auction Bidding</title><link rel="stylesheet" href="style.css"></head>
 <body>
 <div class="wrap">
-<div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD!</div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
+<div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD OUT TO</div><div id="soldEmail" class="sold-email"></div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
 <h1>⛪ Live Church Auction</h1>
 <div id="setupArea"></div>
 <div id="app" class="hidden">
@@ -59,7 +59,7 @@ function money(v){return "₹"+Number(v||0).toLocaleString("en-IN",{maximumFract
 </script>
 <script>
 let sb,channel,state,camChannel,camPeer,viewerId=Math.random().toString(36).slice(2);
-let bidderName="", bidderAddress="";
+let bidderName="", bidderAddress="", bidderEmail="";
 
 async function init(){
  const c=getConfig();
@@ -67,6 +67,7 @@ async function init(){
  sb=supabase.createClient(c.url,c.key);
 
  const {data:{session}} = await sb.auth.getSession();
+ if(session && session.user) bidderEmail = session.user.email || "";
 
  document.getElementById("app").classList.remove("hidden");
  if(session){
@@ -81,8 +82,13 @@ async function init(){
  setInterval(refresh,1000);
 
  sb.auth.onAuthStateChange((_event, newSession)=>{
-   if(newSession) showBidderDetails();
-   else showGoogleLogin();
+   if(newSession){
+     bidderEmail = newSession.user?.email || "";
+     showBidderDetails();
+   }else{
+     bidderEmail = "";
+     showGoogleLogin();
+   }
  });
 }
 
@@ -153,8 +159,13 @@ async function refresh(){
  document.getElementById("status").textContent=data.status.toUpperCase();
  const sold = ["sold","sold_out"].includes(String(data.status).toLowerCase());
  document.getElementById("soldOverlay").classList.toggle("show", sold);
+ const parts = String(data.highest_bidder || "").split("|||");
+ const winner = parts[0] || "Winner";
+ const email = parts[1] || "";
+ const emailEl = document.getElementById("soldEmail");
+ if(emailEl) emailEl.textContent = sold ? email : "";
  document.getElementById("soldSub").textContent = sold
-   ? (data.highest_bidder ? `Winner: ${data.highest_bidder} • ${money(data.current_bid)}` : "Item sold successfully")
+   ? `${winner} • ${money(data.current_bid)}`
    : "";
 }
 
@@ -163,7 +174,7 @@ async function bid(){
  msg.textContent="";
  if(!bidderName)return msg.textContent="Please enter your name first.";
  if(!amount)return msg.textContent="Enter your bid.";
- const {data,error}=await sb.rpc("place_bid",{p_item_number:state.item_number,p_bidder_name:bidderName,p_amount:amount,p_source:"online"});
+ const {data,error}=await sb.rpc("place_bid",{p_item_number:state.item_number,p_bidder_name:(bidderName+"|||"+bidderEmail),p_amount:amount,p_source:"online"});
  if(error)msg.textContent="❌ "+error.message;
  else{msg.textContent=data.ok?"✅ Bid accepted!":"❌ "+data.message;if(data.ok){document.getElementById("amount").value="";await refresh();}}
 }

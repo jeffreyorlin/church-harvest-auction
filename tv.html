@@ -3,7 +3,7 @@
 <title>Church Auction TV</title><link rel="stylesheet" href="style.css"></head><style>#tvPinGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;font-family:Arial,sans-serif}#tvPinGate .box{width:min(92vw,380px);padding:28px;border-radius:16px;background:#222;text-align:center}#tvPinGate input{width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #555;background:#111;color:#fff;font-size:24px;text-align:center;letter-spacing:8px}#tvPinGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700}.tv-locked>*:not(#tvPinGate){visibility:hidden}</style><div id="tvPinGate"><div class="box"><h2>🔐 TV Display</h2><p>Enter the 4-digit TV PIN</p><input id="tvPinInput" type="password" inputmode="numeric" maxlength="4" autofocus><button id="tvPinBtn">Unlock TV</button><div id="tvPinErr"></div></div></div><script>document.body.classList.add('tv-locked');(()=>{const P='1206',g=document.getElementById('tvPinGate'),i=document.getElementById('tvPinInput'),b=document.getElementById('tvPinBtn'),e=document.getElementById('tvPinErr');function u(){if(i.value===P){sessionStorage.setItem('churchAuctionTvUnlocked','1');g.remove();document.body.classList.remove('tv-locked')}else{e.textContent='Incorrect PIN';i.value='';i.focus()}}b.onclick=u;i.onkeydown=x=>{if(x.key==='Enter')u()};if(sessionStorage.getItem('churchAuctionTvUnlocked')==='1'){g.remove();document.body.classList.remove('tv-locked')}})();</script>
 <body class="tv-landscape">
 <div class="tv-shell">
-  <div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD!</div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
+  <div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD OUT TO</div><div id="soldEmail" class="sold-email"></div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
   <div class="tv-topbar">
     <div class="tv-title">⛪ CHURCH AUCTION</div>
     <div class="tv-controls">
@@ -41,9 +41,9 @@
 const DEFAULT_CONFIG_KEY = "churchAuctionConfig";
 const EMBEDDED_CONFIG = {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};
 
-function getConfig() {
-  try { return JSON.parse(localStorage.getItem(DEFAULT_CONFIG_KEY) || "{}"); }
-  catch { return {}; }
+function getConfig(){
+ try{const saved=JSON.parse(localStorage.getItem(DEFAULT_CONFIG_KEY)||"{}");return saved.url&&saved.key?saved:EMBEDDED_CONFIG;}
+ catch{return EMBEDDED_CONFIG;}
 }
 function saveConfig(c) { localStorage.setItem(DEFAULT_CONFIG_KEY, JSON.stringify(c)); }
 
@@ -87,9 +87,14 @@ async function refresh(){const {data,error}=await sb.from("auction_state").selec
  document.getElementById("currentBid").textContent=money(data.current_bid);
  document.getElementById("highest").textContent=data.highest_bidder?`${esc(data.highest_bidder)} (${data.highest_bid_source})`:"No bidder";
  document.getElementById("status").textContent=data.status.toUpperCase();
- const sold = String(data.status).toLowerCase()==="sold" || String(data.status).toLowerCase()==="sold_out";
+ const sold = ["sold","sold_out"].includes(String(data.status).toLowerCase());
  document.getElementById("soldOverlay").classList.toggle("show", sold);
- document.getElementById("soldSub").textContent=data.highest_bidder?`Winner: ${data.highest_bidder} • ${money(data.current_bid)}`:"Item sold successfully";
+ const parts=String(data.highest_bidder||"").split("|||");
+ const winner=parts[0]||"Winner";
+ const email=parts[1]||"";
+ const emailEl=document.getElementById("soldEmail");
+ if(emailEl) emailEl.textContent=sold?email:"";
+ document.getElementById("soldSub").textContent=sold?`${winner} • ${money(data.current_bid)}`:"";
 }
 async function setupCameraViewer(){
  camChannel=sb.channel("church-auction-camera-v1",{config:{broadcast:{ack:true}}});

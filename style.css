@@ -60,3 +60,9 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 @keyframes soldFade { from{opacity:0} to{opacity:1} }
 @keyframes soldShake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-7px)} 75%{transform:translateX(7px)} }
 .sold-flash { animation: soldShake .45s ease-in-out 2; }
+
+.sold-overlay .sold-title,.sold-overlay .sold-sub,.sold-overlay .sold-email{color:#003b73!important;}
+.sold-email{font-size:clamp(24px,4vw,52px);font-weight:800;margin:10px 0;word-break:break-word;color:#003b73;}
+.history-table{width:100%;border-collapse:collapse;margin-top:12px}
+.history-table th,.history-table td{padding:12px 10px;border-bottom:1px solid #d7e0ea;text-align:left;font-size:18px}
+.history-table th{font-weight:800}.table-wrap{overflow:auto}
