@@ -4,6 +4,7 @@
 <title>Church Auction Bidding</title><link rel="stylesheet" href="style.css"></head>
 <body>
 <div class="wrap">
+<div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🎉 SOLD OUT!</div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
 <h1>⛪ Live Church Auction</h1>
 <div id="setupArea"></div>
 <div id="app" class="hidden">
@@ -20,28 +21,21 @@
     <div id="cameraStatus" class="cameraStatus muted">Waiting for church camera…</div>
   </div>
 
-  <div id="loginCard" class="card center hidden">
-    <h2>Sign in to bid</h2>
-    <p class="muted">Use your Google/Gmail account. You must be signed in before placing an online bid.</p>
-    <button class="primary" onclick="signInWithGoogle()">🔐 CONTINUE WITH GOOGLE</button>
-    <p id="loginMsg" class="small"></p>
-  </div>
-
-  <div id="profileCard" class="card hidden">
+  <div id="profileCard" class="card">
     <h2>👤 Bidder Details</h2>
-    <p class="muted">After Google login, enter your name and address before bidding.</p>
+    <p class="muted">Enter your name and address to participate in the auction.</p>
     <input id="profileName" type="text" placeholder="Enter your full name">
     <textarea id="profileAddress" rows="3" placeholder="Enter your address"></textarea>
-    <button class="primary" onclick="saveProfile()">SAVE DETAILS</button>
+    <button class="primary" onclick="saveProfile()">CONTINUE TO BIDDING</button>
     <p id="profileMsg" class="small"></p>
   </div>
 
   <div id="bidCard" class="card hidden">
     <h2>Place your online bid</h2>
-    <p class="small">Signed in as <strong id="userName"></strong> (<span id="userEmail"></span>)</p>
+    <p class="small">Bidding as <strong id="userName"></strong></p>
     <input id="amount" type="number" min="0" step="1" placeholder="Enter higher bid ₹">
     <button class="primary" onclick="bid()">PLACE BID</button>
-    <button onclick="signOut()">SIGN OUT</button>
+    <button onclick="changeBidder()">CHANGE NAME / ADDRESS</button>
     <p id="msg" class="small"></p>
   </div>
 </div></div>
@@ -56,100 +50,69 @@ window.saveSupabaseConfig=()=>{const url=document.getElementById("sbUrl").value.
 function money(v){return "₹"+Number(v||0).toLocaleString("en-IN",{maximumFractionDigits:2})}
 </script>
 <script>
-let sb,channel,state,currentUser,camChannel,camPeer,viewerId=Math.random().toString(36).slice(2);
-
-function getRedirectUrl(){
-  // OAuth must return to a URL allowed in Supabase Authentication > URL Configuration.
-  return window.location.href.split('#')[0];
-}
+let sb,channel,state,camChannel,camPeer,viewerId=Math.random().toString(36).slice(2);
+let bidderName="", bidderAddress="";
 
 async function init(){
  const c=getConfig();
-
  if(!c.url||!c.key)return;
  sb=supabase.createClient(c.url,c.key);
  document.getElementById("app").classList.remove("hidden");
+ loadProfile();
  await refresh();
- await updateAuthUI();
  setupCameraViewer();
  channel=sb.channel("auction-live").on("postgres_changes",{event:"UPDATE",schema:"public",table:"auction_state",filter:"id=eq.1"},refresh).subscribe();
- // Fallback polling keeps every bidder screen current even if Realtime is not enabled.
  setInterval(refresh,1000);
- sb.auth.onAuthStateChange((_event,session)=>{
-   currentUser=session?.user||null;
-   updateAuthUI();
- });
 }
 
-async function updateAuthUI(){
- if(!sb)return;
- const {data:{user}}=await sb.auth.getUser();
- currentUser=user||null;
- const loginCard=document.getElementById("loginCard");
- const bidCard=document.getElementById("bidCard");
- const profileCard=document.getElementById("profileCard");
- if(currentUser){
-   loginCard.classList.add("hidden");
-   const meta=currentUser.user_metadata||{};
-   const name=meta.bidder_name||meta.full_name||meta.name||"";
-   const address=meta.bidder_address||"";
-   document.getElementById("profileName").value=name;
-   document.getElementById("profileAddress").value=address;
-   if(!name.trim() || !address.trim()){
-     profileCard.classList.remove("hidden");
-     bidCard.classList.add("hidden");
-   }else{
-     profileCard.classList.add("hidden");
-     bidCard.classList.remove("hidden");
-     document.getElementById("userName").textContent=name;
-     document.getElementById("userEmail").textContent=currentUser.email||"";
-   }
+function loadProfile(){
+ bidderName=localStorage.getItem("churchAuctionBidderName")||"";
+ bidderAddress=localStorage.getItem("churchAuctionBidderAddress")||"";
+ document.getElementById("profileName").value=bidderName;
+ document.getElementById("profileAddress").value=bidderAddress;
+ if(bidderName.trim() && bidderAddress.trim()){
+   document.getElementById("profileCard").classList.add("hidden");
+   document.getElementById("bidCard").classList.remove("hidden");
+   document.getElementById("userName").textContent=bidderName;
  }else{
-   bidCard.classList.add("hidden");
-   profileCard.classList.add("hidden");
-   loginCard.classList.remove("hidden");
+   document.getElementById("profileCard").classList.remove("hidden");
+   document.getElementById("bidCard").classList.add("hidden");
  }
 }
 
-window.signInWithGoogle=async()=>{
- const loginMsg=document.getElementById("loginMsg");
- loginMsg.textContent="Opening Google sign-in...";
- const {error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:getRedirectUrl()}});
- if(error)loginMsg.textContent="❌ "+error.message;
-};
-
-window.saveProfile=async()=>{
+window.saveProfile=()=>{
  const name=document.getElementById("profileName").value.trim();
  const address=document.getElementById("profileAddress").value.trim();
  const msg=document.getElementById("profileMsg");
  if(name.length<2){msg.textContent="❌ Please enter your full name.";return;}
  if(address.length<5){msg.textContent="❌ Please enter your address.";return;}
- msg.textContent="Saving...";
- const {data,error}=await sb.auth.updateUser({data:{bidder_name:name,bidder_address:address}});
- if(error){msg.textContent="❌ "+error.message;return;}
- currentUser=data.user||currentUser;
+ localStorage.setItem("churchAuctionBidderName",name);
+ localStorage.setItem("churchAuctionBidderAddress",address);
+ bidderName=name; bidderAddress=address;
  msg.textContent="✅ Details saved.";
- await updateAuthUI();
+ loadProfile();
 };
 
-window.signOut=async()=>{await sb.auth.signOut();};
+window.changeBidder=()=>{localStorage.removeItem("churchAuctionBidderName");localStorage.removeItem("churchAuctionBidderAddress");loadProfile();};
 
 async function refresh(){
  const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();
- if(error){document.getElementById("msg").textContent="❌ "+error.message;return;}
+ if(error)return;
  state=data;
  document.getElementById("itemLabel").textContent=`Item ${data.item_number}: ${data.item_name}`;
  document.getElementById("currentBid").textContent=money(data.current_bid);
  document.getElementById("highest").textContent=data.highest_bidder?`${data.highest_bidder} (${data.highest_bid_source})`:"No bidder";
  document.getElementById("status").textContent=data.status.toUpperCase();
+ const sold = String(data.status).toLowerCase()==="sold" || String(data.status).toLowerCase()==="sold_out";
+ document.getElementById("soldOverlay").classList.toggle("show",sold);
+ document.getElementById("soldSub").textContent=data.highest_bidder?`Winner: ${data.highest_bidder} • ${money(data.current_bid)}`:"Item sold successfully";
 }
 
 async function bid(){
  const amount=Number(document.getElementById("amount").value),msg=document.getElementById("msg");
  msg.textContent="";
- if(!currentUser)return msg.textContent="Please sign in with Google first.";
+ if(!bidderName)return msg.textContent="Please enter your name first.";
  if(!amount)return msg.textContent="Enter your bid.";
- const bidderName=currentUser.user_metadata?.bidder_name||currentUser.user_metadata?.full_name||currentUser.user_metadata?.name||currentUser.email||"Google user";
  const {data,error}=await sb.rpc("place_bid",{p_item_number:state.item_number,p_bidder_name:bidderName,p_amount:amount,p_source:"online"});
  if(error)msg.textContent="❌ "+error.message;
  else{msg.textContent=data.ok?"✅ Bid accepted!":"❌ "+data.message;if(data.ok){document.getElementById("amount").value="";await refresh();}}

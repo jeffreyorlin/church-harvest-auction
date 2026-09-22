@@ -43,3 +43,20 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 @media (max-width:900px){
   .tv-controls button,.tv-controls select{font-size:12px;padding:8px}
 }
+
+
+/* Larger bidder details */
+#profileName, #profileAddress { font-size: 24px; padding: 18px; }
+#profileName { min-height: 58px; }
+#profileAddress { min-height: 120px; }
+
+/* Sold-out animation */
+.sold-overlay { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+.sold-overlay.show { display: flex; animation: soldFade .35s ease-out; }
+.sold-box { padding: 34px 55px; border-radius: 24px; text-align: center; background: #fff; box-shadow: 0 0 45px rgba(255,255,255,.45); animation: soldPulse 1s ease-in-out infinite; }
+.sold-title { font-size: clamp(48px, 10vw, 110px); font-weight: 900; letter-spacing: 4px; margin: 0; }
+.sold-sub { font-size: clamp(24px, 4vw, 44px); font-weight: 800; margin-top: 10px; }
+@keyframes soldPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
+@keyframes soldFade { from{opacity:0} to{opacity:1} }
+@keyframes soldShake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-7px)} 75%{transform:translateX(7px)} }
+.sold-flash { animation: soldShake .45s ease-in-out 2; }
