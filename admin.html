@@ -34,6 +34,12 @@
     </div>
     <button class="good" onclick="offlineBid()">ADD OFFLINE BID</button>
   </div>
+
+  <div class="card" id="underageCard">
+    <h2>🚨 Under-18 Bidding Attempts</h2>
+    <div id="underageNotice" class="admin-alert hidden"></div>
+    <div id="underageHistory" class="history"></div>
+  </div>
   <div class="card">
     <h2>Recent bids</h2><button class="danger" onclick="clearRecentBidHistory()">CLEAR RECENT BID HISTORY</button><div id="history" class="history"></div>
   </div>
@@ -123,15 +129,15 @@ async function init(){
   document.getElementById("authArea").innerHTML='<div class="card"><button onclick="adminLogout()">LOG OUT</button></div>';
   document.getElementById("app").classList.remove("hidden");
   await refresh();
-  channel=sb.channel("auction-live").on("postgres_changes",{event:"*",schema:"public",table:"auction_state"},refresh).on("postgres_changes",{event:"*",schema:"public",table:"bids"},loadBids).subscribe();
+  channel=sb.channel("auction-live").on("postgres_changes",{event:"*",schema:"public",table:"auction_state"},refresh).on("postgres_changes",{event:"*",schema:"public",table:"bids"},loadBids).on("postgres_changes",{event:"*",schema:"public",table:"underage_bidding_attempts"},loadUnderageAttempts).subscribe();
 }
 async function getState(){const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();if(error)throw error;return data}
 function showMsg(msg,ok=false){const el=document.getElementById("actionMsg");if(!el)return;el.style.display="block";el.textContent=msg;el.className="card "+(ok?"success":"error");}
-async function refresh(){try{const a=await getState();render(a);await loadBids()}catch(e){showMsg("Read failed: "+(e.message||e));}}
+async function refresh(){try{const a=await getState();render(a);await loadBids();await loadUnderageAttempts()}catch(e){showMsg("Read failed: "+(e.message||e));}}
 function render(a){
  document.getElementById("itemLabel").textContent=`Item ${a.item_number}: ${a.item_name}`;
  document.getElementById("currentBid").textContent=money(a.current_bid);
- document.getElementById("highest").textContent=a.highest_bidder?`${esc(a.highest_bidder)} (${a.highest_bid_source})`:"No bidder";
+ document.getElementById("highest").textContent=a.highest_bidder?`${esc(String(a.highest_bidder).split("|||")[0])} (${a.highest_bid_source})`:"No bidder";
  document.getElementById("status").textContent=a.status.toUpperCase();
 }
 async function update(fields){
@@ -170,6 +176,15 @@ async function offlineBid(){
  const {data,error}=await sb.rpc("place_bid",{p_item_number:a.item_number,p_bidder_name:name,p_amount:amount,p_source:"offline"});
  if(error)alert(error.message);else if(!data.ok)alert(data.message);else{document.getElementById("offlineAmount").value="";refresh()}
 }
+async function loadUnderageAttempts(){
+ const {data,error}=await sb.from("underage_bidding_attempts").select("*").order("attempted_at",{ascending:false}).limit(20);
+ if(error)return;
+ const box=document.getElementById("underageHistory"),notice=document.getElementById("underageNotice");
+ if(!data||!data.length){box.innerHTML='<div class="muted">No under-18 attempts recorded.</div>';notice.classList.add("hidden");return;}
+ const latest=data[0];
+ notice.textContent=`⚠️ Under-18 bidding attempt detected: ${latest.name} (${latest.age})`;notice.classList.remove("hidden");
+ box.innerHTML=data.map(x=>`<div><b>${esc(x.name)}</b> — age ${esc(x.age)}<br><span class="muted">${esc(x.address||"")} • ${new Date(x.attempted_at).toLocaleString("en-IN")}</span></div>`).join("");
+}
 async function loadBids(){
  if(!sb)return;
  const {data,error}=await sb.from("bids").select("*").order("created_at",{ascending:false}).limit(30);
@@ -199,8 +214,8 @@ setInterval(() => {
 <h2>🧾 Buyer History</h2>
 <button class="danger" onclick="clearBuyerHistory()">CLEAR BUYER HISTORY</button>
 <div class="table-wrap"><table class="history-table">
-<thead><tr><th>Buyer Name</th><th>Gmail</th><th>Item Name</th><th>Amount</th></tr></thead>
-<tbody id="buyerHistoryBody"><tr><td colspan="4">Loading...</td></tr></tbody>
+<thead><tr><th>Buyer Name</th><th>Gmail</th><th>Address</th><th>Age</th><th>Item Name</th><th>Amount</th></tr></thead>
+<tbody id="buyerHistoryBody"><tr><td colspan="6">Loading...</td></tr></tbody>
 </table></div></section>
 <script>
 async function clearBuyerHistory(){
@@ -209,7 +224,7 @@ async function clearBuyerHistory(){
  if(error){showMsg("Unable to clear buyer history: "+error.message);return;}
  if(!data || !data.ok){showMsg((data&&data.message)||"Unable to clear buyer history.");return;}
  const body=document.getElementById("buyerHistoryBody");
- if(body)body.innerHTML='<tr><td colspan="4">No bids yet</td></tr>';
+ if(body)body.innerHTML='<tr><td colspan="6">No bids yet</td></tr>';
  const history=document.getElementById("history");
  if(history)history.innerHTML="";
  showMsg("Buyer history cleared successfully.",true);
@@ -220,14 +235,16 @@ async function loadBuyerHistory(){
  const body=document.getElementById("buyerHistoryBody");
  if(!body)return;
  if(error){body.innerHTML='<tr><td colspan="4">Unable to load history</td></tr>';return;}
- if(!data||!data.length){body.innerHTML='<tr><td colspan="4">No bids yet</td></tr>';return;}
+ if(!data||!data.length){body.innerHTML='<tr><td colspan="6">No bids yet</td></tr>';return;}
  body.innerHTML=data.map(r=>{
    const parts=String(r.bidder_name||"").split("|||");
    const name=esc(parts[0]||"");
    const email=esc(parts[1]||"");
+   const address=esc(r.bidder_address || "");
+   const age=esc(r.bidder_age ?? "");
    const item=esc(r.item_name || ("Item #"+(r.item_number??"")));
    const amount=money(r.amount);
-   return `<tr><td>${name}</td><td>${email}</td><td>${item}</td><td>${amount}</td></tr>`;
+   return `<tr><td>${name}</td><td>${email}</td><td>${address}</td><td>${age}</td><td>${item}</td><td>${amount}</td></tr>`;
  }).join("");
 }
 </script>

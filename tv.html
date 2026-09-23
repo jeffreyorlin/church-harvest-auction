@@ -85,16 +85,17 @@ async function init(){
 async function refresh(){const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();if(error)return;
  document.getElementById("itemLabel").textContent=`Item ${data.item_number}: ${data.item_name}`;
  document.getElementById("currentBid").textContent=money(data.current_bid);
- document.getElementById("highest").textContent=data.highest_bidder?`${esc(data.highest_bidder)} (${data.highest_bid_source})`:"No bidder";
+ document.getElementById("highest").textContent=data.highest_bidder?`${esc(String(data.highest_bidder).split("|||")[0])} (${data.highest_bid_source})`:"No bidder";
  document.getElementById("status").textContent=data.status.toUpperCase();
  const sold = ["sold","sold_out"].includes(String(data.status).toLowerCase());
  document.getElementById("soldOverlay").classList.toggle("show", sold);
  const parts=String(data.highest_bidder||"").split("|||");
  const winner=parts[0]||"Winner";
  const email=parts[1]||"";
+ const address=parts[2]||"";
  const emailEl=document.getElementById("soldEmail");
- if(emailEl) emailEl.textContent=sold?email:"";
- document.getElementById("soldSub").textContent=sold?`${winner} • ${money(data.current_bid)}`:"";
+ if(emailEl) emailEl.textContent=sold?`${email} (${winner}, ${address})`:"";
+ document.getElementById("soldSub").textContent=sold?`SOLD OUT TO ${winner} • ${money(data.current_bid)}`:"";
 }
 async function setupCameraViewer(){
  camChannel=sb.channel("church-auction-camera-v1",{config:{broadcast:{ack:true}}});

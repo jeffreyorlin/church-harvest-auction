@@ -66,3 +66,10 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 .history-table{width:100%;border-collapse:collapse;margin-top:12px}
 .history-table th,.history-table td{padding:12px 10px;border-bottom:1px solid #d7e0ea;text-align:left;font-size:18px}
 .history-table th{font-weight:800}.table-wrap{overflow:auto}
+
+/* Large item name on bidding page */
+#itemLabel{font-size:clamp(34px,7vw,76px);font-weight:900;line-height:1.08;color:#fff;word-break:break-word;}
+/* 4K camera preview */
+.cameraLive,.tv-camera-video{image-rendering:auto;}
+
+.admin-alert{padding:14px;border-radius:12px;background:#ff6b6b;color:#111;font-weight:900;margin-bottom:10px}.admin-alert.hidden{display:none}
