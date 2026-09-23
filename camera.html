@@ -60,7 +60,7 @@ document.body.classList.add('camera-locked');
 </div></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-const KEY='churchAuctionConfig', ROOM='church-auction-camera-v1'; let sb, channel, auctionChannel, stream=null, peers=new Map(); let cameraUser=null; let lastAuctionStatus=null; let cameraRotation=0; let cameraZoom=1; let hardwareZoom=false;
+const KEY='churchAuctionConfig', ROOM='church-auction-camera-v1'; let sb, channel, auctionChannel, stream=null, peers=new Map(); let cameraUser=null; let cameraRotation=0; let cameraZoom=1; let hardwareZoom=false;
 function cfg(){try{const saved=JSON.parse(localStorage.getItem(KEY)||"{}");return saved.url&&saved.key?saved:{url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}catch{return {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}}
 function save(c){localStorage.setItem(KEY,JSON.stringify(c))}
 function box(){const c=cfg();if(c.url&&c.key)return '';return `<div class="setup card"><h2>First-time setup</h2><input id="sbUrl" placeholder="https://your-project.supabase.co"><input id="sbKey" placeholder="sb_publishable_..."><button onclick="saveCfg()">Save & continue</button></div>`}
@@ -68,7 +68,7 @@ window.saveCfg=()=>{const url=document.getElementById('sbUrl').value.trim().repl
 function authBox(){return `<div class="setup card"><h2>Camera admin login</h2><p class="muted">Sign in with the same Supabase admin account used for the auction.</p><input id="email" type="email" placeholder="Admin email"><input id="pass" type="password" placeholder="Password"><button class="primary" onclick="login()">LOGIN</button><p id="loginMsg" class="small error"></p></div>`}
 window.login=async()=>{const msg=document.getElementById('loginMsg');const {error}=await sb.auth.signInWithPassword({email:document.getElementById('email').value.trim(),password:document.getElementById('pass').value});if(error)msg.textContent=error.message;else location.reload()}
 async function init(){document.getElementById('setupArea').innerHTML=box();const c=cfg();if(!c.url||!c.key)return;sb=supabase.createClient(c.url,c.key);const {data:{session}}=await sb.auth.getSession();if(!session){document.getElementById('authArea').innerHTML=authBox();return;}cameraUser=session.user;document.getElementById('authArea').innerHTML='<div class="card"><button onclick="logout()">LOG OUT</button></div>';document.getElementById('app').classList.remove('hidden');channel=sb.channel(ROOM,{config:{broadcast:{ack:true}}});channel.on('broadcast',{event:'join'},async ({payload})=>{if(!stream)return;await makeOffer(payload.id)}).on('broadcast',{event:'answer'},async ({payload})=>{const pc=peers.get(payload.id);if(pc)await pc.setRemoteDescription(payload.description)}).on('broadcast',{event:'ice'},async ({payload})=>{const pc=peers.get(payload.id);if(pc&&payload.candidate)try{await pc.addIceCandidate(payload.candidate)}catch(e){}}).subscribe();
-  auctionChannel=sb.channel('auction-camera-status').on('postgres_changes',{event:'UPDATE',schema:'public',table:'auction_state',filter:'id=eq.1'},({new:row})=>handleAuctionStatus(row)).subscribe();
+  auctionChannel=sb.channel('auction-camera-status').subscribe();
   try{const {data}=await sb.from('auction_state').select('status,current_bid,highest_bidder,item_name').eq('id',1).single(); if(data) lastAuctionStatus=String(data.status||'').toLowerCase();}catch(e){}
 }
 window.logout=async()=>{stopCamera();await sb.auth.signOut();location.reload()}
@@ -89,22 +89,6 @@ async function setCameraZoom(value){
  const t=stream?.getVideoTracks?.()[0]; hardwareZoom=false;
  if(t?.applyConstraints){try{const caps=t.getCapabilities?.()||{}; if(caps.zoom){const z=Math.min(caps.zoom.max,Math.max(caps.zoom.min,cameraZoom)); await t.applyConstraints({advanced:[{zoom:z}]}); hardwareZoom=true;}}catch(e){}}
  broadcastCameraTransform();
-}
-function playClapping(){
- try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;const ctx=new C();const now=ctx.currentTime;
-   for(let i=0;i<12;i++){const t=now+i*0.11;const o=ctx.createOscillator(),g=ctx.createGain();o.type='triangle';o.frequency.setValueAtTime(1200+(i%3)*180,t);o.frequency.exponentialRampToValueAtTime(500,t+0.055);g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.18,t+0.008);g.gain.exponentialRampToValueAtTime(0.0001,t+0.07);o.connect(g).connect(ctx.destination);o.start(t);o.stop(t+0.075);} setTimeout(()=>ctx.close().catch(()=>{}),1800);
- }catch(e){console.warn('Clap sound blocked',e);}
-}
-function handleAuctionStatus(row){
- const status=String(row?.status||'').toLowerCase();
- const wasSold=['sold','sold_out'].includes(String(lastAuctionStatus||''));
- const isSold=['sold','sold_out'].includes(status);
- if(isSold && !wasSold){
-   const overlay=document.getElementById('cameraSoldOverlay'); overlay.classList.add('show');
-   setTimeout(playClapping,650);
-   setTimeout(()=>overlay.classList.remove('show'),4500);
- }
- lastAuctionStatus=status;
 }
 async function startCamera(){
   const msg=document.getElementById('camMsg');

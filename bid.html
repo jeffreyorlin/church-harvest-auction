@@ -185,6 +185,7 @@ async function refresh(){
  document.getElementById("highest").textContent=data.highest_bidder?`${String(data.highest_bidder).split("|||")[0]} (${data.highest_bid_source})`:"No bidder";
  document.getElementById("status").textContent=data.status.toUpperCase();
  const sold = ["sold","sold_out"].includes(String(data.status).toLowerCase());
+  if(window.watchSoldOutClap) window.watchSoldOutClap(sold);
  document.getElementById("soldOverlay").classList.toggle("show", sold);
  const parts = String(data.highest_bidder || "").split("|||");
  const winner = parts[0] || "Winner";
@@ -289,21 +290,5 @@ init();
 </script>
 
 
-<script>
-(function(){
-  const soldWords = /SOLD\s*OUT/i;
-  let seen=false;
-  function scan(){
-    const text=document.body ? document.body.innerText : '';
-    const now=soldWords.test(text);
-    if(now && !seen && window.playSoldOutClap) window.playSoldOutClap();
-    seen=now;
-  }
-  // Delay initial scan so existing SOLD OUT state doesn't unexpectedly clap on page load.
-  setTimeout(function(){ seen=soldWords.test(document.body?.innerText||''); },1500);
-  const obs=new MutationObserver(scan);
-  obs.observe(document.documentElement,{subtree:true,childList:true,characterData:true});
-})();
-</script>
 
 </body></html>
