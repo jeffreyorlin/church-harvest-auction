@@ -184,19 +184,24 @@ async function loadUnderageAttempts(){
  if(!data||!data.length){box.innerHTML='<div class="muted">No under-18 attempts recorded.</div>';notice.classList.add("hidden");return;}
  const latest=data[0];
  const clearedAt=Number(localStorage.getItem(AGE_NOTICE_CLEARED_KEY)||0);
- const latestTime=Date.parse(latest.attempted_at||"");
- if(!clearedAt || (Number.isFinite(latestTime) && latestTime>clearedAt)){
+ const latestTime=Date.parse(latest.attempted_at||"")||0;
+ if(latestTime>clearedAt){
    notice.textContent=`⚠️ Under-18 bidding attempt detected: ${latest.name} (${latest.age})`;
    notice.classList.remove("hidden");
  } else {
    notice.classList.add("hidden");
+   notice.textContent="";
  }
  box.innerHTML=data.map(x=>`<div><b>${esc(x.name)}</b> — age ${esc(x.age)}<br><span class="muted">${esc(x.address||"")} • ${new Date(x.attempted_at).toLocaleString("en-IN")}</span></div>`).join("");
 }
 async function clearAgeLimitNotification(){
- localStorage.setItem(AGE_NOTICE_CLEARED_KEY,String(Date.now()));
- document.getElementById("underageNotice").classList.add("hidden");
+ const notice=document.getElementById("underageNotice");
+ const now=Date.now();
+ localStorage.setItem(AGE_NOTICE_CLEARED_KEY,String(now));
+ if(notice){notice.classList.add("hidden");notice.textContent="";}
  showMsg("Age-limit notification cleared.",true);
+ // Re-check once after saving, so realtime refreshes cannot immediately restore the old message.
+ await loadUnderageAttempts();
 }
 async function loadBids(){
  if(!sb)return;

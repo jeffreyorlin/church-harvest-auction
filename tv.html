@@ -159,37 +159,60 @@ async function toggleFullscreen(){
 }
 </script>
 
-<!-- SOLD OUT celebration sound -->
-<audio id="soldOutClap" preload="auto">
-  <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAESsAAABAAgAZGF0YQAAAAA=" type="audio/wav">
-</audio>
+<!-- SOLD OUT celebration sound: exactly 5 seconds -->
 <script>
 (function(){
   let lastSoldState = null;
   let audioCtx = null;
-  function clap(){
+  let clapTimers = [];
+  let stopTimer = null;
+
+  function singleClap(){
     try{
-      audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
-      if(audioCtx.state === 'suspended') audioCtx.resume();
-      // Two short synthetic hand-clap bursts, avoiding an external audio file.
-      [0,0.13].forEach(function(delay){
-        const buffer=audioCtx.createBuffer(1,audioCtx.sampleRate*0.09,audioCtx.sampleRate);
-        const data=buffer.getChannelData(0);
-        for(let i=0;i<data.length;i++){
-          const env=Math.exp(-i/(audioCtx.sampleRate*0.018));
-          data[i]=(Math.random()*2-1)*env;
-        }
-        const src=audioCtx.createBufferSource();
-        const gain=audioCtx.createGain();
-        gain.gain.value=0.38;
-        src.buffer=buffer; src.connect(gain); gain.connect(audioCtx.destination);
-        src.start(audioCtx.currentTime+delay);
-      });
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if(!Ctx) return;
+      audioCtx = audioCtx || new Ctx();
+      if(audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+      const duration = 0.085;
+      const buffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate*duration), audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for(let i=0;i<data.length;i++){
+        const env = Math.exp(-i/(audioCtx.sampleRate*0.017));
+        data[i] = (Math.random()*2-1)*env;
+      }
+      const src = audioCtx.createBufferSource();
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.42;
+      src.buffer = buffer;
+      src.connect(gain);
+      gain.connect(audioCtx.destination);
+      src.start();
     }catch(e){}
   }
-  window.playSoldOutClap = clap;
+
+  function stopClapping(){
+    clapTimers.forEach(t=>clearTimeout(t));
+    clapTimers=[];
+    if(stopTimer) clearTimeout(stopTimer);
+    stopTimer=null;
+  }
+
+  function clapForFiveSeconds(){
+    stopClapping();
+    const started = performance.now();
+    singleClap();
+    // Schedule the claps up front so browser timer delays cannot shorten the 5-second celebration.
+    for(let t=260; t<5000; t+=260){
+      clapTimers.push(setTimeout(()=>{
+        if(performance.now()-started < 5000) singleClap();
+      }, t));
+    }
+    stopTimer=setTimeout(stopClapping,5000);
+  }
+
+  window.playSoldOutClap = clapForFiveSeconds;
   window.watchSoldOutClap = function(isSold){
-    if(isSold && lastSoldState !== true) clap();
+    if(isSold && lastSoldState !== true) clapForFiveSeconds();
     lastSoldState = !!isSold;
   };
 })();
