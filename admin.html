@@ -8,16 +8,6 @@
 <div id="app" class="hidden">
   <div id="actionMsg" class="card" style="display:none"></div>
   <div class="card">
-    <h2>5-Item Auction Queue</h2>
-    <p class="muted">Enter the next five item names and starting amounts. After you click NEXT ITEM, the next saved row will automatically become the live item and open for bidding.</p>
-    <div id="queueRows"></div>
-    <div class="queue-actions">
-      <button class="primary" onclick="saveQueue()">SAVE 5 ITEMS</button>
-      <button onclick="clearQueue()">CLEAR QUEUE</button>
-    </div>
-    <div id="queueMsg" class="small muted"></div>
-  </div>
-  <div class="card">
     <h2>Current item</h2>
     <div class="grid">
       <div><label>Item name</label><input id="itemName" placeholder="Enter item when announced"></div>
@@ -43,6 +33,12 @@
       <input id="offlineAmount" type="number" min="0" step="1" placeholder="Bid ₹">
     </div>
     <button class="good" onclick="offlineBid()">ADD OFFLINE BID</button>
+  </div>
+
+  <div class="card" id="underageCard">
+    <h2>🚨 Under-18 Bidding Attempts</h2>
+    <div id="underageNotice" class="admin-alert hidden"></div><button id="clearAgeNoticeBtn" class="danger hidden" onclick="clearAgeLimitNotification()">CLEAR AGE-LIMIT NOTIFICATION</button>
+    <div id="underageHistory" class="history"></div>
   </div>
   <div class="card">
     <h2>Recent bids</h2><button class="danger" onclick="clearRecentBidHistory()">CLEAR RECENT BID HISTORY</button><div id="history" class="history"></div>
@@ -90,22 +86,6 @@ function money(v) {
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
-function queueKey(){return "churchAuctionFiveItemQueue";}
-function getQueue(){try{const q=JSON.parse(localStorage.getItem(queueKey())||"[]");return Array.from({length:5},(_,i)=>q[i]||{name:"",amount:""});}catch{return Array.from({length:5},()=>({name:"",amount:""}));}}
-function renderQueue(){
-  const rows=document.getElementById("queueRows"); if(!rows)return;
-  const q=getQueue();
-  rows.innerHTML=q.map((it,i)=>`<div class="queue-row"><div class="queue-num">${i+1}</div><input id="qName${i}" placeholder="Item ${i+1} name" value="${esc(it.name)}"><input id="qAmount${i}" type="number" min="0" step="1" placeholder="Starting amount ₹" value="${esc(it.amount)}"></div>`).join("");
-}
-function saveQueue(){
-  const q=Array.from({length:5},(_,i)=>({name:document.getElementById(`qName${i}`).value.trim(),amount:document.getElementById(`qAmount${i}`).value.trim()}));
-  const bad=q.findIndex(x=>!x.name || !Number.isFinite(Number(x.amount)) || Number(x.amount)<0);
-  if(bad!==-1){document.getElementById("queueMsg").textContent=`Enter item name and starting amount for row ${bad+1}.`;return;}
-  localStorage.setItem(queueKey(),JSON.stringify(q));
-  document.getElementById("queueMsg").textContent="5 items saved. NEXT ITEM will use the next row automatically.";
-}
-function clearQueue(){localStorage.removeItem(queueKey());renderQueue();document.getElementById("queueMsg").textContent="Queue cleared.";}
-function queuedItemForNumber(n){const q=getQueue();const i=n-1;return q[i]&&q[i].name?{name:q[i].name,amount:Number(q[i].amount)}:null;}
 </script>
 <script>
 let sb, channel;
@@ -149,15 +129,15 @@ async function init(){
   document.getElementById("authArea").innerHTML='<div class="card"><button onclick="adminLogout()">LOG OUT</button></div>';
   document.getElementById("app").classList.remove("hidden");
   await refresh();
-  channel=sb.channel("auction-live-admin").on("postgres_changes",{event:"UPDATE",schema:"public",table:"auction_state",filter:"id=eq.1"},p=>{if(p.new)render(p.new)}).on("postgres_changes",{event:"INSERT",schema:"public",table:"bids"},loadBids).subscribe();
+  channel=sb.channel("auction-live").on("postgres_changes",{event:"*",schema:"public",table:"auction_state"},refresh).on("postgres_changes",{event:"*",schema:"public",table:"bids"},loadBids).on("postgres_changes",{event:"*",schema:"public",table:"underage_bidding_attempts"},loadUnderageAttempts).subscribe();
 }
 async function getState(){const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();if(error)throw error;return data}
 function showMsg(msg,ok=false){const el=document.getElementById("actionMsg");if(!el)return;el.style.display="block";el.textContent=msg;el.className="card "+(ok?"success":"error");}
-async function refresh(){try{const a=await getState();render(a);await loadBids()}catch(e){showMsg("Read failed: "+(e.message||e));}}
+async function refresh(){try{const a=await getState();render(a);await loadBids();await loadUnderageAttempts()}catch(e){showMsg("Read failed: "+(e.message||e));}}
 function render(a){
  document.getElementById("itemLabel").textContent=`Item ${a.item_number}: ${a.item_name}`;
  document.getElementById("currentBid").textContent=money(a.current_bid);
- document.getElementById("highest").textContent=a.highest_bidder?`${esc(a.highest_bidder)} (${a.highest_bid_source})`:"No bidder";
+ document.getElementById("highest").textContent=a.highest_bidder?`${esc(String(a.highest_bidder).split("|||")[0])} (${a.highest_bid_source})`:"No bidder";
  document.getElementById("status").textContent=a.status.toUpperCase();
 }
 async function update(fields){
@@ -177,27 +157,10 @@ async function startItem(){
 }
 async function waiting(){await update({status:"waiting"})}
 async function sold(){const a=await getState();if(a.status!=="open")return alert("No open auction.");await update({status:"sold"})}
-async function nextItem(){
-  const a=await getState();
-  const nextNumber=a.item_number+1;
-  const queued=queuedItemForNumber(nextNumber);
-  if(queued){
-    await update({item_number:nextNumber,item_name:queued.name,starting_bid:queued.amount,current_bid:queued.amount,highest_bidder:null,highest_bid_source:null,status:"open"});
-    showMsg(`Item ${nextNumber} — ${queued.name} is now OPEN for bidding.`,true);
-  }else{
-    await update({item_number:nextNumber,item_name:"Waiting for next item",starting_bid:0,current_bid:0,highest_bidder:null,highest_bid_source:null,status:"waiting"});
-    showMsg(`Item ${nextNumber} is waiting. Add it to the 5-item queue or start it manually.`);
-  }
-}
+async function nextItem(){const a=await getState();await update({item_number:a.item_number+1,item_name:"Waiting for next item",starting_bid:0,current_bid:0,highest_bidder:null,highest_bid_source:null,status:"waiting"})}
 async function startFromBeginning(){
   if(!confirm("Start the auction again from item 1? The bidding history will be kept."))return;
-  const queued=queuedItemForNumber(1);
-  if(queued){
-    await update({item_number:1,item_name:queued.name,starting_bid:queued.amount,current_bid:queued.amount,highest_bidder:null,highest_bid_source:null,status:"open"});
-    showMsg(`Item 1 — ${queued.name} is now OPEN for bidding.`,true);
-  }else{
-    await update({item_number:1,item_name:"Waiting for next item",starting_bid:0,current_bid:0,highest_bidder:null,highest_bid_source:null,status:"waiting"});
-  }
+  await update({item_number:1,item_name:"Waiting for next item",starting_bid:0,current_bid:0,highest_bidder:null,highest_bid_source:null,status:"waiting"});
 }
 async function clearRecentBidHistory(){
   if(!confirm("Clear the Recent Bids list on this admin page?"))return;
@@ -213,6 +176,15 @@ async function offlineBid(){
  const {data,error}=await sb.rpc("place_bid",{p_item_number:a.item_number,p_bidder_name:name,p_amount:amount,p_source:"offline"});
  if(error)alert(error.message);else if(!data.ok)alert(data.message);else{document.getElementById("offlineAmount").value="";refresh()}
 }
+async function loadUnderageAttempts(){
+ const {data,error}=await sb.from("underage_bidding_attempts").select("*").order("attempted_at",{ascending:false}).limit(20);
+ if(error)return;
+ const box=document.getElementById("underageHistory"),notice=document.getElementById("underageNotice");
+ if(!data||!data.length){box.innerHTML='<div class="muted">No under-18 attempts recorded.</div>';notice.classList.add("hidden");return;}
+ const latest=data[0];
+ notice.textContent=`⚠️ Under-18 bidding attempt detected: ${latest.name} (${latest.age})`;notice.classList.remove("hidden");
+ box.innerHTML=data.map(x=>`<div><b>${esc(x.name)}</b> — age ${esc(x.age)}<br><span class="muted">${esc(x.address||"")} • ${new Date(x.attempted_at).toLocaleString("en-IN")}</span></div>`).join("");
+}
 async function loadBids(){
  if(!sb)return;
  const {data,error}=await sb.from("bids").select("*").order("created_at",{ascending:false}).limit(30);
@@ -227,5 +199,53 @@ async function loadBids(){
 }
 init();
 </script>
+<script>
+/* Automatic live refresh: keeps this screen synchronized without manual browser refresh. */
+setInterval(() => {
+  try {
+    if (typeof refresh === "function") refresh();
+  } catch (e) {
+    console.warn("Automatic refresh failed:", e);
+  }
+}, 1000);
+</script>
 
-</body></html>
+<section class="card" id="buyerHistoryCard">
+<h2>🧾 Buyer History</h2>
+<button class="danger" onclick="clearBuyerHistory()">CLEAR BUYER HISTORY</button>
+<div class="table-wrap"><table class="history-table">
+<thead><tr><th>Buyer Name</th><th>Gmail</th><th>Address</th><th>Age</th><th>Item Name</th><th>Amount</th></tr></thead>
+<tbody id="buyerHistoryBody"><tr><td colspan="6">Loading...</td></tr></tbody>
+</table></div></section>
+<script>
+async function clearBuyerHistory(){
+ if(!confirm("Clear ALL buyer history? This will permanently delete the saved bidding history."))return;
+ const {data,error}=await sb.rpc("clear_bidding_history");
+ if(error){showMsg("Unable to clear buyer history: "+error.message);return;}
+ if(!data || !data.ok){showMsg((data&&data.message)||"Unable to clear buyer history.");return;}
+ const body=document.getElementById("buyerHistoryBody");
+ if(body)body.innerHTML='<tr><td colspan="6">No bids yet</td></tr>';
+ const history=document.getElementById("history");
+ if(history)history.innerHTML="";
+ showMsg("Buyer history cleared successfully.",true);
+}
+async function loadBuyerHistory(){
+ if(!sb)return;
+ const {data,error}=await sb.from("bids").select("*").order("created_at",{ascending:false}).limit(100);
+ const body=document.getElementById("buyerHistoryBody");
+ if(!body)return;
+ if(error){body.innerHTML='<tr><td colspan="4">Unable to load history</td></tr>';return;}
+ if(!data||!data.length){body.innerHTML='<tr><td colspan="6">No bids yet</td></tr>';return;}
+ body.innerHTML=data.map(r=>{
+   const parts=String(r.bidder_name||"").split("|||");
+   const name=esc(parts[0]||"");
+   const email=esc(parts[1]||"");
+   const address=esc(r.bidder_address || "");
+   const age=esc(r.bidder_age ?? "");
+   const item=esc(r.item_name || ("Item #"+(r.item_number??"")));
+   const amount=money(r.amount);
+   return `<tr><td>${name}</td><td>${email}</td><td>${address}</td><td>${age}</td><td>${item}</td><td>${amount}</td></tr>`;
+ }).join("");
+}
+</script>
+<script>setTimeout(loadBuyerHistory,1000);setInterval(loadBuyerHistory,3000);</script></body></html>

@@ -67,40 +67,39 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 .history-table th,.history-table td{padding:12px 10px;border-bottom:1px solid #d7e0ea;text-align:left;font-size:18px}
 .history-table th{font-weight:800}.table-wrap{overflow:auto}
 
+/* Large item name on bidding page */
+#itemLabel{font-size:clamp(34px,7vw,76px);font-weight:900;line-height:1.08;color:#fff;word-break:break-word;}
+/* 4K camera preview */
+.cameraLive,.tv-camera-video{image-rendering:auto;}
 
-/* Live TV layout and homepage buyer history */
-.tv-live-grid{display:grid;grid-template-columns:1.25fr .9fr;gap:18px;width:100%;height:100%;padding:18px;min-height:0}
-.tv-live-camera,.tv-live-auction{background:#0b1220;border:1px solid #25304a;border-radius:18px;min-height:0;overflow:hidden}
-.tv-live-camera{display:flex;flex-direction:column;padding:14px}
-.tv-live-auction{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
-.tv-live-caption{font-size:clamp(18px,2vw,30px);font-weight:800;color:#aeb9cc;margin-top:1vh}
-.tv-live-camera .tv-camera-video{width:100%;height:100%;min-height:0;max-height:none;object-fit:contain;background:#000;border-radius:12px;flex:1}
-.tv-live-camera .tv-camera-title{flex:0 0 auto}
-.buyer-history-home{margin-top:18px}.buyer-history-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.buyer-history-heading h2{margin-bottom:4px}
-.buyer-history-table th,.buyer-history-table td{white-space:nowrap;vertical-align:top}
-.history-source{display:inline-block;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:900}
-.history-source.online{background:#2e7d32;color:#fff}
-.history-source.offline{background:#616161;color:#fff}
-@media(max-width:900px){.tv-live-grid{grid-template-columns:1fr;height:auto}.tv-live-camera,.tv-live-auction{min-height:42vh}.tv-landscape{overflow:auto}.tv-shell{height:auto;min-height:100vh}.tv-live-camera .tv-camera-video{height:50vh}}
+.admin-alert{padding:14px;border-radius:12px;background:#ff6b6b;color:#111;font-weight:900;margin-bottom:10px}.admin-alert.hidden{display:none}
 
-/* Separate protected buyer history page */
-.buyer-history-page{max-width:1200px;margin:auto;padding:24px 18px 40px}
-.buyer-history-header{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
-.buyer-history-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.access-card{max-width:520px;margin:7vh auto 0;text-align:center}
-.access-card input{max-width:360px;margin:8px auto}
-.history-message{padding:14px;border-radius:12px;background:#24314a;margin-top:12px}
-@media(max-width:700px){.buyer-history-page{padding:14px 10px}.history-table th,.history-table td{font-size:15px;padding:9px 8px}}
-
-
-/* Camera controls */
-.camera-preview-wrap{width:100%;display:flex;justify-content:center;align-items:center;background:#000;border-radius:16px;overflow:hidden;min-height:320px}.cameraPreviewCanvas{width:100%;max-height:70vh;display:block;background:#000;object-fit:contain}.camera-tools{margin-top:14px;padding:14px;border-radius:14px;background:#0f1727}.camera-tool-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}.camera-tool-row label,.camera-tool-row span:first-child{min-width:70px;font-weight:800}.camera-tool-row input[type=range]{flex:1;min-width:180px}.rotateBtn{background:#fff}.rotateBtn:disabled,.camera-tools input:disabled{opacity:.45;cursor:not-allowed}
-
-/* Admin queue */
-.queue-grid{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:10px;align-items:center}.queue-grid input{margin:0}.queue-row{display:grid;grid-template-columns:46px minmax(0,1fr) 180px;gap:10px;align-items:center;margin-bottom:10px}.queue-num{font-weight:900;font-size:18px;text-align:center;color:#ffd54a}.queue-actions{margin-top:12px}
-@media(max-width:700px){.queue-row{grid-template-columns:38px 1fr}.queue-row input:last-child{grid-column:2}.camera-tool-row{align-items:flex-start}.camera-tool-row label{min-width:100%}}
-
-.camera-tools input[type=number]{width:88px;padding:8px 10px;border-radius:8px;border:1px solid #cbd5e1;font-weight:700}
-.tv-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.tv-controls button{white-space:nowrap}
-#cameraVideo{transition:transform .25s ease}
+/* Enhanced animated TV display */
+.tv-landscape{background:radial-gradient(circle at 50% 20%,#17233b 0,#05070c 55%,#020307 100%)}
+.tv-shell{position:relative;overflow:hidden}
+.tv-shell:before,.tv-shell:after{content:"";position:absolute;pointer-events:none;border-radius:50%;filter:blur(35px);opacity:.22;animation:tvGlow 7s ease-in-out infinite alternate}
+.tv-shell:before{width:35vw;height:35vw;background:#ffd54a;top:-18vw;left:-12vw}
+.tv-shell:after{width:30vw;height:30vw;background:#4da3ff;bottom:-15vw;right:-10vw;animation-delay:2s}
+.tv-topbar{box-shadow:0 3px 24px #0008;position:relative}
+.tv-title{animation:titleFloat 3s ease-in-out infinite}
+.tv-stage{position:relative;z-index:1}
+.tv-slide.active .tv-auction-card{animation:auctionIn .7s ease-out both}
+.tv-bid{text-shadow:0 0 24px #ffd54a88;animation:bidPulse 2.2s ease-in-out infinite}
+.tv-item-label{animation:labelGlow 3s ease-in-out infinite}
+.tv-highest{animation:softFloat 3.5s ease-in-out infinite}
+.tv-camera-card{animation:cameraIn .7s ease-out}
+.tv-camera-video{box-shadow:0 0 0 2px #ffd54a44,0 0 40px #000}
+.tv-mini-camera{position:absolute;right:2.5vw;bottom:2.5vh;width:min(31vw,520px);height:min(24vh,250px);background:#080b12;border:2px solid #ffd54a;border-radius:18px;padding:7px;box-shadow:0 0 28px #000,0 0 20px #ffd54a55;overflow:hidden;animation:miniFloat 4s ease-in-out infinite}
+.tv-mini-camera-head{height:30px;display:flex;justify-content:space-between;align-items:center;font-size:clamp(10px,1vw,16px);font-weight:900;padding:0 8px;color:#fff}
+.tv-mini-camera-head span:last-child{color:#78e08f;animation:liveBlink 1.2s infinite}
+.tv-mini-camera-video{width:100%;height:calc(100% - 30px);object-fit:cover;border-radius:12px;background:#000}
+@keyframes tvGlow{from{transform:scale(1);opacity:.16}to{transform:scale(1.18);opacity:.28}}
+@keyframes titleFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes auctionIn{from{opacity:0;transform:scale(.96) translateY(18px)}to{opacity:1;transform:none}}
+@keyframes cameraIn{from{opacity:0;transform:scale(1.03)}to{opacity:1;transform:none}}
+@keyframes bidPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.025)}}
+@keyframes labelGlow{0%,100%{opacity:.75}50%{opacity:1}}
+@keyframes softFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes miniFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes liveBlink{0%,100%{opacity:1}50%{opacity:.3}}
+@media (max-width:900px){.tv-mini-camera{width:38vw;height:22vh;right:1.5vw;bottom:1.5vh}.tv-bid{font-size:clamp(70px,12vw,150px)}}
