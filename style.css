@@ -166,3 +166,25 @@ button.primary:active{transform:scale(.98)}
 .bid-church-name{font-size:clamp(22px,4vw,40px);margin:14px 0 2px}
 @keyframes churchNameGlow{0%,100%{transform:scale(1);filter:brightness(1)}50%{transform:scale(1.025);filter:brightness(1.25)}}
 @media (prefers-reduced-motion:reduce){.tv-church-name,.bid-church-name{animation:none}}
+
+
+/* Home church name */
+.home-church-name{font-size:clamp(24px,5vw,48px);font-weight:900;letter-spacing:2px;text-align:center;padding:18px 14px 0;color:#ffd54a;text-shadow:0 0 18px rgba(255,213,74,.35);animation:churchNameGlow 2.8s ease-in-out infinite}
+@keyframes churchNameGlow{0%,100%{opacity:.88;transform:translateY(0)}50%{opacity:1;transform:translateY(-2px)}}
+
+/* Camera orientation + zoom */
+.camera-mode-row{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:10px 0}
+.camera-tools{max-width:620px;margin:12px auto 4px;text-align:left}
+.camera-tools label{font-weight:900;color:#ffd54a}
+.camera-tools input[type=range]{accent-color:#ffd54a}
+#preview.camera-preview-landscape{aspect-ratio:16/9;max-height:70vh;object-fit:contain;transform:scale(var(--camera-zoom,1));transform-origin:center}
+#preview.camera-preview-portrait{aspect-ratio:9/16;max-height:70vh;width:min(100%,520px);margin:auto;object-fit:contain;transform:scale(var(--camera-zoom,1));transform-origin:center}
+.camera-control-card{overflow:hidden}
+.camera-sold-overlay{position:fixed;inset:0;z-index:100000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.82);backdrop-filter:blur(5px)}
+.camera-sold-overlay.show{display:flex;animation:cameraSoldIn .35s ease-out}
+.camera-sold-box{text-align:center;padding:35px 45px;border-radius:28px;background:#fff;box-shadow:0 0 70px rgba(255,213,74,.65);animation:cameraSoldPulse .7s ease-in-out infinite alternate}
+.camera-sold-title{font-size:clamp(56px,13vw,150px);font-weight:1000;color:#003b73;line-height:1}
+.camera-sold-box>div:last-child{font-size:clamp(20px,4vw,42px);font-weight:900;color:#003b73;margin-top:14px}
+@keyframes cameraSoldIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+@keyframes cameraSoldPulse{from{transform:scale(1)}to{transform:scale(1.07)}}
+@media (prefers-reduced-motion:reduce){.home-church-name{animation:none}.camera-sold-overlay.show{animation:none}.camera-sold-box{animation:none}}

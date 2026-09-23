@@ -158,4 +158,59 @@ async function toggleFullscreen(){
   }catch(e){console.warn(e);}
 }
 </script>
+
+<!-- SOLD OUT celebration sound -->
+<audio id="soldOutClap" preload="auto">
+  <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAESsAAABAAgAZGF0YQAAAAA=" type="audio/wav">
+</audio>
+<script>
+(function(){
+  let lastSoldState = null;
+  let audioCtx = null;
+  function clap(){
+    try{
+      audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+      if(audioCtx.state === 'suspended') audioCtx.resume();
+      // Two short synthetic hand-clap bursts, avoiding an external audio file.
+      [0,0.13].forEach(function(delay){
+        const buffer=audioCtx.createBuffer(1,audioCtx.sampleRate*0.09,audioCtx.sampleRate);
+        const data=buffer.getChannelData(0);
+        for(let i=0;i<data.length;i++){
+          const env=Math.exp(-i/(audioCtx.sampleRate*0.018));
+          data[i]=(Math.random()*2-1)*env;
+        }
+        const src=audioCtx.createBufferSource();
+        const gain=audioCtx.createGain();
+        gain.gain.value=0.38;
+        src.buffer=buffer; src.connect(gain); gain.connect(audioCtx.destination);
+        src.start(audioCtx.currentTime+delay);
+      });
+    }catch(e){}
+  }
+  window.playSoldOutClap = clap;
+  window.watchSoldOutClap = function(isSold){
+    if(isSold && lastSoldState !== true) clap();
+    lastSoldState = !!isSold;
+  };
+})();
+</script>
+
+
+<script>
+(function(){
+  const soldWords = /SOLD\s*OUT/i;
+  let seen=false;
+  function scan(){
+    const text=document.body ? document.body.innerText : '';
+    const now=soldWords.test(text);
+    if(now && !seen && window.playSoldOutClap) window.playSoldOutClap();
+    seen=now;
+  }
+  // Delay initial scan so existing SOLD OUT state doesn't unexpectedly clap on page load.
+  setTimeout(function(){ seen=soldWords.test(document.body?.innerText||''); },1500);
+  const obs=new MutationObserver(scan);
+  obs.observe(document.documentElement,{subtree:true,childList:true,characterData:true});
+})();
+</script>
+
 </body></html>

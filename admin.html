@@ -37,7 +37,7 @@
 
   <div class="card" id="underageCard">
     <h2>🚨 Under-18 Bidding Attempts</h2>
-    <div id="underageNotice" class="admin-alert hidden"></div><button id="clearAgeNoticeBtn" class="danger hidden" onclick="clearAgeLimitNotification()">CLEAR AGE-LIMIT NOTIFICATION</button>
+    <div id="underageNotice" class="admin-alert hidden"></div><button id="clearAgeNoticeBtn" class="danger" onclick="clearAgeLimitNotification()">CLEAR AGE-LIMIT NOTIFICATION</button>
     <div id="underageHistory" class="history"></div>
   </div>
   <div class="card">
@@ -49,6 +49,7 @@
 <script>
 const DEFAULT_CONFIG_KEY = "churchAuctionConfig";
 const RECENT_BIDS_CLEARED_KEY = "churchAuctionRecentBidsClearedAt";
+const AGE_NOTICE_CLEARED_KEY = "churchAuctionAgeNoticeClearedAt";
 
 function getConfig() {
   try {
@@ -182,8 +183,20 @@ async function loadUnderageAttempts(){
  const box=document.getElementById("underageHistory"),notice=document.getElementById("underageNotice");
  if(!data||!data.length){box.innerHTML='<div class="muted">No under-18 attempts recorded.</div>';notice.classList.add("hidden");return;}
  const latest=data[0];
- notice.textContent=`⚠️ Under-18 bidding attempt detected: ${latest.name} (${latest.age})`;notice.classList.remove("hidden");
+ const clearedAt=Number(localStorage.getItem(AGE_NOTICE_CLEARED_KEY)||0);
+ const latestTime=Date.parse(latest.attempted_at||"");
+ if(!clearedAt || (Number.isFinite(latestTime) && latestTime>clearedAt)){
+   notice.textContent=`⚠️ Under-18 bidding attempt detected: ${latest.name} (${latest.age})`;
+   notice.classList.remove("hidden");
+ } else {
+   notice.classList.add("hidden");
+ }
  box.innerHTML=data.map(x=>`<div><b>${esc(x.name)}</b> — age ${esc(x.age)}<br><span class="muted">${esc(x.address||"")} • ${new Date(x.attempted_at).toLocaleString("en-IN")}</span></div>`).join("");
+}
+async function clearAgeLimitNotification(){
+ localStorage.setItem(AGE_NOTICE_CLEARED_KEY,String(Date.now()));
+ document.getElementById("underageNotice").classList.add("hidden");
+ showMsg("Age-limit notification cleared.",true);
 }
 async function loadBids(){
  if(!sb)return;
