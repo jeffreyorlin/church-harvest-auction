@@ -34,7 +34,7 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 .tv-highest{font-size:clamp(25px,3vw,50px);font-weight:700;margin:2vh 0}
 .tv-camera-card{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .tv-camera-title{font-size:clamp(24px,3vw,46px);font-weight:900;margin-bottom:1vh}
-.tv-camera-video{width:100%;height:calc(100% - 70px);max-height:none;object-fit:contain;background:#000;border-radius:12px}
+.tv-camera-video{width:100%;height:calc(100% - 55px);max-height:none;object-fit:contain;background:#000;border-radius:12px}
 .tv-camera-card .cameraStatus{font-size:clamp(16px,1.6vw,26px);margin-top:8px}
 @media (orientation:portrait){
   .tv-topbar{height:auto;min-height:64px;flex-wrap:wrap;gap:6px;padding:8px}
@@ -89,7 +89,7 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 .tv-highest{animation:softFloat 3.5s ease-in-out infinite}
 .tv-camera-card{animation:cameraIn .7s ease-out}
 .tv-camera-video{box-shadow:0 0 0 2px #ffd54a44,0 0 40px #000}
-.tv-mini-camera{position:absolute;right:2.5vw;bottom:2.5vh;width:min(31vw,520px);height:min(24vh,250px);background:#080b12;border:2px solid #ffd54a;border-radius:18px;padding:7px;box-shadow:0 0 28px #000,0 0 20px #ffd54a55;overflow:hidden;animation:miniFloat 4s ease-in-out infinite}
+.tv-mini-camera{position:absolute;right:1.5vw;bottom:1.5vh;width:min(38vw,680px);height:min(31vh,330px);background:#080b12;border:2px solid #ffd54a;border-radius:18px;padding:7px;box-shadow:0 0 28px #000,0 0 20px #ffd54a55;overflow:hidden;animation:miniFloat 4s ease-in-out infinite}
 .tv-mini-camera-head{height:30px;display:flex;justify-content:space-between;align-items:center;font-size:clamp(10px,1vw,16px);font-weight:900;padding:0 8px;color:#fff}
 .tv-mini-camera-head span:last-child{color:#78e08f;animation:liveBlink 1.2s infinite}
 .tv-mini-camera-video{width:100%;height:calc(100% - 30px);object-fit:cover;border-radius:12px;background:#000}
@@ -172,13 +172,13 @@ button.primary:active{transform:scale(.98)}
 .home-church-name{font-size:clamp(24px,5vw,48px);font-weight:900;letter-spacing:2px;text-align:center;padding:18px 14px 0;color:#ffd54a;text-shadow:0 0 18px rgba(255,213,74,.35);animation:churchNameGlow 2.8s ease-in-out infinite}
 @keyframes churchNameGlow{0%,100%{opacity:.88;transform:translateY(0)}50%{opacity:1;transform:translateY(-2px)}}
 
-/* Camera orientation + zoom */
-.camera-mode-row{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:10px 0}
+/* Camera rotation + zoom */
+.camera-mode-row{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0}
+.camera-rotation-value{font-weight:800;padding:8px 12px;border-radius:10px;background:#eef2f7;color:#111}
 .camera-tools{max-width:620px;margin:12px auto 4px;text-align:left}
 .camera-tools label{font-weight:900;color:#ffd54a}
 .camera-tools input[type=range]{accent-color:#ffd54a}
-#preview.camera-preview-landscape{aspect-ratio:16/9;max-height:70vh;object-fit:contain;transform:scale(var(--camera-zoom,1));transform-origin:center}
-#preview.camera-preview-portrait{aspect-ratio:9/16;max-height:70vh;width:min(100%,520px);margin:auto;object-fit:contain;transform:scale(var(--camera-zoom,1));transform-origin:center}
+#preview{max-width:100%;max-height:70vh;aspect-ratio:16/9;object-fit:contain;transform:rotate(var(--camera-rotation,0deg)) scale(var(--camera-zoom,1));transform-origin:center;transition:transform .35s ease}
 .camera-control-card{overflow:hidden}
 .camera-sold-overlay{position:fixed;inset:0;z-index:100000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.82);backdrop-filter:blur(5px)}
 .camera-sold-overlay.show{display:flex;animation:cameraSoldIn .35s ease-out}

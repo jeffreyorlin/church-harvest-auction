@@ -50,6 +50,7 @@
 const DEFAULT_CONFIG_KEY = "churchAuctionConfig";
 const RECENT_BIDS_CLEARED_KEY = "churchAuctionRecentBidsClearedAt";
 const AGE_NOTICE_CLEARED_KEY = "churchAuctionAgeNoticeClearedAt";
+const AGE_NOTICE_CLEARED_ID_KEY = "churchAuctionAgeNoticeClearedId";
 
 function getConfig() {
   try {
@@ -184,8 +185,12 @@ async function loadUnderageAttempts(){
  if(!data||!data.length){box.innerHTML='<div class="muted">No under-18 attempts recorded.</div>';notice.classList.add("hidden");return;}
  const latest=data[0];
  const clearedAt=Number(localStorage.getItem(AGE_NOTICE_CLEARED_KEY)||0);
+ const clearedId=localStorage.getItem(AGE_NOTICE_CLEARED_ID_KEY)||"";
  const latestTime=Date.parse(latest.attempted_at||"")||0;
- if(latestTime>clearedAt){
+ const latestId=String(latest.id||"");
+ const isClearedById=!!latestId && !!clearedId && latestId===clearedId;
+ const isClearedByTime=!latestId && latestTime<=clearedAt;
+ if(!isClearedById && !isClearedByTime){
    notice.textContent=`⚠️ Under-18 bidding attempt detected: ${latest.name} (${latest.age})`;
    notice.classList.remove("hidden");
  } else {
@@ -197,10 +202,12 @@ async function loadUnderageAttempts(){
 async function clearAgeLimitNotification(){
  const notice=document.getElementById("underageNotice");
  const now=Date.now();
+ const {data}=await sb.from("underage_bidding_attempts").select("id,attempted_at").order("attempted_at",{ascending:false}).limit(1);
+ const latest=data&&data[0];
  localStorage.setItem(AGE_NOTICE_CLEARED_KEY,String(now));
+ localStorage.setItem(AGE_NOTICE_CLEARED_ID_KEY,String(latest?.id||""));
  if(notice){notice.classList.add("hidden");notice.textContent="";}
  showMsg("Age-limit notification cleared.",true);
- // Re-check once after saving, so realtime refreshes cannot immediately restore the old message.
  await loadUnderageAttempts();
 }
 async function loadBids(){

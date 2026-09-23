@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Church Auction TV</title><link rel="stylesheet" href="style.css"></head><style>#tvPinGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;font-family:Arial,sans-serif}#tvPinGate .box{width:min(92vw,380px);padding:28px;border-radius:16px;background:#222;text-align:center}#tvPinGate input{width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #555;background:#111;color:#fff;font-size:24px;text-align:center;letter-spacing:8px}#tvPinGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700}.tv-locked>*:not(#tvPinGate){visibility:hidden}</style><div id="tvPinGate"><div class="box"><h2>🔐 TV Display</h2><p>Enter the 4-digit TV PIN</p><input id="tvPinInput" type="password" inputmode="numeric" maxlength="4" autofocus><button id="tvPinBtn">Unlock TV</button><div id="tvPinErr"></div></div></div><script>document.body.classList.add('tv-locked');(()=>{const P='1206',g=document.getElementById('tvPinGate'),i=document.getElementById('tvPinInput'),b=document.getElementById('tvPinBtn'),e=document.getElementById('tvPinErr');function u(){if(i.value===P){sessionStorage.setItem('churchAuctionTvUnlocked','1');g.remove();document.body.classList.remove('tv-locked')}else{e.textContent='Incorrect PIN';i.value='';i.focus()}}b.onclick=u;i.onkeydown=x=>{if(x.key==='Enter')u()};if(sessionStorage.getItem('churchAuctionTvUnlocked')==='1'){g.remove();document.body.classList.remove('tv-locked')}})();</script>
+<title>Church Auction TV</title><link rel="stylesheet" href="style.css"></head><style>#tvPinGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;font-family:Arial,sans-serif}#tvPinGate .box{width:min(92vw,380px);padding:28px;border-radius:16px;background:#222;text-align:center}#tvPinGate input{width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #555;background:#111;color:#fff;font-size:24px;text-align:center;letter-spacing:8px}#tvPinGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700}.tv-locked>*:not(#tvPinGate){visibility:hidden}.tv-camera-video{width:100%;height:calc(100% - 60px);object-fit:contain;background:#000;border-radius:12px;transform:rotate(var(--camera-rotation,0deg)) scale(var(--camera-scale,1));transition:transform .35s ease}.tv-mini-camera-video{transform:rotate(var(--camera-rotation,0deg)) scale(var(--camera-scale,1));transition:transform .35s ease}
+</style><div id="tvPinGate"><div class="box"><h2>🔐 TV Display</h2><p>Enter the 4-digit TV PIN</p><input id="tvPinInput" type="password" inputmode="numeric" maxlength="4" autofocus><button id="tvPinBtn">Unlock TV</button><div id="tvPinErr"></div></div></div><script>document.body.classList.add('tv-locked');(()=>{const P='1206',g=document.getElementById('tvPinGate'),i=document.getElementById('tvPinInput'),b=document.getElementById('tvPinBtn'),e=document.getElementById('tvPinErr');function u(){if(i.value===P){sessionStorage.setItem('churchAuctionTvUnlocked','1');g.remove();document.body.classList.remove('tv-locked')}else{e.textContent='Incorrect PIN';i.value='';i.focus()}}b.onclick=u;i.onkeydown=x=>{if(x.key==='Enter')u()};if(sessionStorage.getItem('churchAuctionTvUnlocked')==='1'){g.remove();document.body.classList.remove('tv-locked')}})();</script>
 <body class="tv-landscape">
 <div class="tv-shell">
   <div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD OUT TO</div><div id="soldEmail" class="sold-email"></div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
@@ -27,7 +28,7 @@
         <div id="highest" class="tv-highest">No bidder</div>
         <span id="status" class="status">WAITING</span>
       </div>
-      <div class="tv-mini-camera">
+      <div class="tv-mini-camera tv-mini-camera-large">
         <div class="tv-mini-camera-head"><span>📹 LIVE PRODUCT CAMERA</span><span id="miniCameraStatus">● LIVE</span></div>
         <video id="miniCameraVideo" class="tv-mini-camera-video" autoplay playsinline muted></video>
       </div>
@@ -112,7 +113,12 @@ async function setupCameraViewer(){
    camPeer.onicecandidate=e=>{if(e.candidate)camChannel.send({type:'broadcast',event:'ice',payload:{id:viewerId,candidate:e.candidate}})};
    await camPeer.setRemoteDescription(payload.description);const ans=await camPeer.createAnswer();await camPeer.setLocalDescription(ans);
    await camChannel.send({type:'broadcast',event:'answer',payload:{id:viewerId,description:camPeer.localDescription}});
- }).on('broadcast',{event:'ice'},async ({payload})=>{if(payload.id!==viewerId||!camPeer||!payload.candidate)return;try{await camPeer.addIceCandidate(payload.candidate)}catch(e){}}).subscribe(async status=>{if(status==='SUBSCRIBED'){await camChannel.send({type:'broadcast',event:'join',payload:{id:viewerId}});}});
+ }).on('broadcast',{event:'ice'},async ({payload})=>{if(payload.id!==viewerId||!camPeer||!payload.candidate)return;try{await camPeer.addIceCandidate(payload.candidate)}catch(e){}}).on('broadcast',{event:'camera-transform'},({payload})=>{
+   const rot=Number(payload?.rotation||0);
+   const zoom=Number(payload?.zoom||1);
+   const hw=!!payload?.hardwareZoom;
+   ['cameraVideo','miniCameraVideo'].forEach(id=>{const el=document.getElementById(id);if(el){el.style.setProperty('--camera-rotation',rot+'deg');el.style.setProperty('--camera-scale',hw?'1':String(Math.max(1,Math.min(4,zoom))));}});
+ }).subscribe(async status=>{if(status==='SUBSCRIBED'){await camChannel.send({type:'broadcast',event:'join',payload:{id:viewerId}});}});
 }
 init();
 </script>
