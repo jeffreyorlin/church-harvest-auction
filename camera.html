@@ -63,7 +63,52 @@ function authBox(){return `<div class="setup card"><h2>Camera admin login</h2><p
 window.login=async()=>{const msg=document.getElementById('loginMsg');const {error}=await sb.auth.signInWithPassword({email:document.getElementById('email').value.trim(),password:document.getElementById('pass').value});if(error)msg.textContent=error.message;else location.reload()}
 async function init(){document.getElementById('setupArea').innerHTML=box();const c=cfg();if(!c.url||!c.key)return;sb=supabase.createClient(c.url,c.key);const {data:{session}}=await sb.auth.getSession();if(!session){document.getElementById('authArea').innerHTML=authBox();return;}cameraUser=session.user;document.getElementById('authArea').innerHTML='<div class="card"><button onclick="logout()">LOG OUT</button></div>';document.getElementById('app').classList.remove('hidden');channel=sb.channel(ROOM,{config:{broadcast:{ack:true}}});channel.on('broadcast',{event:'join'},async ({payload})=>{if(!stream)return;await makeOffer(payload.id)}).on('broadcast',{event:'answer'},async ({payload})=>{const pc=peers.get(payload.id);if(pc)await pc.setRemoteDescription(payload.description)}).on('broadcast',{event:'ice'},async ({payload})=>{const pc=peers.get(payload.id);if(pc&&payload.candidate)try{await pc.addIceCandidate(payload.candidate)}catch(e){}}).subscribe()}
 window.logout=async()=>{stopCamera();await sb.auth.signOut();location.reload()}
-async function startCamera(){try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:3840,min:1920},height:{ideal:2160,min:1080},frameRate:{ideal:30,max:30}},audio:false});document.getElementById('preview').srcObject=stream;document.getElementById('startBtn').classList.add('hidden');document.getElementById('stopBtn').classList.remove('hidden');document.getElementById('camMsg').textContent='LIVE — remote viewers can now see this camera.';}catch(e){document.getElementById('camMsg').textContent='Camera error: '+e.message;}}
+async function startCamera(){
+  const msg=document.getElementById('camMsg');
+  try{
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error('Camera API is unavailable. Open this page using HTTPS or localhost.');
+    }
+
+    // Try the requested 4K quality first, then automatically fall back.
+    const profiles=[
+      {label:'4K', video:{facingMode:{ideal:'environment'},width:{ideal:3840},height:{ideal:2160},frameRate:{ideal:30,max:30}}},
+      {label:'1080p', video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}}},
+      {label:'720p', video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}}},
+      {label:'standard', video:{facingMode:{ideal:'environment'},frameRate:{ideal:30}}}
+    ];
+
+    let lastError=null;
+    for(const profile of profiles){
+      try{
+        stream=await navigator.mediaDevices.getUserMedia({
+          video:profile.video,
+          audio:false
+        });
+        const track=stream.getVideoTracks()[0];
+        const settings=track.getSettings();
+        msg.textContent='LIVE — '+(settings.width||'?')+'×'+(settings.height||'?')+
+          ' ('+profile.label+') — remote viewers can now see this camera.';
+        document.getElementById('preview').srcObject=stream;
+        document.getElementById('startBtn').classList.add('hidden');
+        document.getElementById('stopBtn').classList.remove('hidden');
+        return;
+      }catch(e){
+        lastError=e;
+        if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+      }
+    }
+    throw lastError || new Error('Unable to access camera.');
+  }catch(e){
+    console.error('Camera error:',e);
+    let detail=e && e.message ? e.message : String(e);
+    if(e && e.name==='NotAllowedError') detail='Camera permission was denied. Allow camera access in your browser.';
+    else if(e && e.name==='NotFoundError') detail='No camera was found on this device.';
+    else if(e && e.name==='NotReadableError') detail='The camera is already being used by another application.';
+    else if(e && e.name==='SecurityError') detail='Camera access requires HTTPS or localhost.';
+    msg.textContent='Camera error: '+detail;
+  }
+}
 async function makeOffer(id){if(peers.has(id))peers.get(id).close();const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});peers.set(id,pc);stream.getTracks().forEach(t=>{const sender=pc.addTrack(t,stream); if(sender&&sender.getParameters){const params=sender.getParameters(); params.encodings=params.encodings||[{}]; params.encodings[0].maxBitrate=18000000; params.encodings[0].maxFramerate=30; sender.setParameters(params).catch(()=>{});}});pc.onicecandidate=e=>{if(e.candidate)channel.send({type:'broadcast',event:'ice',payload:{id,candidate:e.candidate}})};const offer=await pc.createOffer();await pc.setLocalDescription(offer);await channel.send({type:'broadcast',event:'offer',payload:{id,description:pc.localDescription}})}
 window.stopCamera=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;for(const pc of peers.values())pc.close();peers.clear();document.getElementById('preview').srcObject=null;document.getElementById('startBtn').classList.remove('hidden');document.getElementById('stopBtn').classList.add('hidden');document.getElementById('camMsg').textContent='Camera stopped.'}
 init();
