@@ -1,92 +1,155 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Church Auction TV</title>
-<link rel="stylesheet" href="style.css">
-<style>
-#tvPinGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;font-family:Arial,sans-serif}
-#tvPinGate .box{width:min(92vw,380px);padding:28px;border-radius:16px;background:#222;text-align:center}
-#tvPinGate input{width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #555;background:#111;color:#fff;font-size:24px;text-align:center;letter-spacing:8px}
-#tvPinGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700}
-.tv-locked>*:not(#tvPinGate){visibility:hidden}
-</style>
-</head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Church Auction TV</title><link rel="stylesheet" href="style.css"></head><style>#tvPinGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;font-family:Arial,sans-serif}#tvPinGate .box{width:min(92vw,380px);padding:28px;border-radius:16px;background:#222;text-align:center}#tvPinGate input{width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #555;background:#111;color:#fff;font-size:24px;text-align:center;letter-spacing:8px}#tvPinGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700}.tv-locked>*:not(#tvPinGate){visibility:hidden}</style><div id="tvPinGate"><div class="box"><h2>🔐 TV Display</h2><p>Enter the 4-digit TV PIN</p><input id="tvPinInput" type="password" inputmode="numeric" maxlength="4" autofocus><button id="tvPinBtn">Unlock TV</button><div id="tvPinErr"></div></div></div><script>document.body.classList.add('tv-locked');(()=>{const P='1206',g=document.getElementById('tvPinGate'),i=document.getElementById('tvPinInput'),b=document.getElementById('tvPinBtn'),e=document.getElementById('tvPinErr');function u(){if(i.value===P){sessionStorage.setItem('churchAuctionTvUnlocked','1');g.remove();document.body.classList.remove('tv-locked')}else{e.textContent='Incorrect PIN';i.value='';i.focus()}}b.onclick=u;i.onkeydown=x=>{if(x.key==='Enter')u()};if(sessionStorage.getItem('churchAuctionTvUnlocked')==='1'){g.remove();document.body.classList.remove('tv-locked')}})();</script>
 <body class="tv-landscape">
-<div id="tvPinGate"><div class="box"><h2>🔐 TV Display</h2><p>Enter the 4-digit TV PIN</p><input id="tvPinInput" type="password" inputmode="numeric" maxlength="4" autofocus><button id="tvPinBtn">Unlock TV</button><div id="tvPinErr"></div></div></div>
 <div class="tv-shell">
   <div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD OUT TO</div><div id="soldEmail" class="sold-email"></div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
   <div class="tv-topbar">
-    <div class="tv-title">⛪ CHURCH AUCTION — LIVE</div>
-    <div class="tv-controls"><button onclick="toggleFullscreen()">⛶ FULLSCREEN</button></div>
+    <div class="tv-title">⛪ CHURCH AUCTION</div>
+    <div class="tv-controls">
+      <button id="slideshowBtn" onclick="toggleSlideshow()">▶ SLIDESHOW</button>
+      <select id="slideInterval" title="Slideshow interval">
+        <option value="5000">5 sec</option>
+        <option value="10000" selected>10 sec</option>
+        <option value="15000">15 sec</option>
+        <option value="30000">30 sec</option>
+      </select>
+      <button onclick="toggleFullscreen()">⛶ FULLSCREEN</button>
+    </div>
   </div>
   <div id="setupArea"></div>
-  <main id="app" class="hidden tv-live-grid">
-    <section class="tv-live-camera">
-      <div class="tv-camera-title">📹 LIVE PRODUCT CAMERA</div>
-      <video id="cameraVideo" class="tv-camera-video" autoplay muted playsinline></video>
-      <div id="cameraStatus" class="cameraStatus muted">Connecting to church camera…</div>
+  <div id="app" class="hidden tv-stage">
+    <section id="auctionSlide" class="tv-slide active">
+      <div class="tv-auction-card">
+        <div id="itemLabel" class="tv-item-label">Waiting...</div>
+        <div id="currentBid" class="tv-bid">₹0</div>
+        <div id="highest" class="tv-highest">No bidder</div>
+        <span id="status" class="status">WAITING</span>
+      </div>
     </section>
-    <section class="tv-live-auction">
-      <div id="itemLabel" class="tv-item-label">Waiting...</div>
-      <div class="tv-live-caption">CURRENT BID</div>
-      <div id="currentBid" class="tv-bid">₹0</div>
-      <div id="highest" class="tv-highest">No bidder</div>
-      <span id="status" class="status">WAITING</span>
+    <section id="cameraSlide" class="tv-slide">
+      <div class="tv-camera-card">
+        <div class="tv-camera-title">📹 LIVE PRODUCT</div>
+        <video id="cameraVideo" class="tv-camera-video" autoplay playsinline></video>
+        <div id="cameraStatus" class="cameraStatus muted">Waiting for church camera…</div>
+      </div>
     </section>
-  </main>
+  </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-document.body.classList.add('tv-locked');
-(()=>{const P='1206',g=document.getElementById('tvPinGate'),i=document.getElementById('tvPinInput'),b=document.getElementById('tvPinBtn'),e=document.getElementById('tvPinErr');function u(){if(i.value===P){sessionStorage.setItem('churchAuctionTvUnlocked','1');g.remove();document.body.classList.remove('tv-locked')}else{e.textContent='Incorrect PIN';i.value='';i.focus()}}b.onclick=u;i.onkeydown=x=>{if(x.key==='Enter')u()};if(sessionStorage.getItem('churchAuctionTvUnlocked')==='1'){g.remove();document.body.classList.remove('tv-locked')}})();
-const DEFAULT_CONFIG_KEY='churchAuctionConfig';
-const EMBEDDED_CONFIG={url:'https://dcgtufrwqvuuyrlouepu.supabase.co',key:'sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt'};
-function getConfig(){try{const saved=JSON.parse(localStorage.getItem(DEFAULT_CONFIG_KEY)||'{}');return saved.url&&saved.key?saved:EMBEDDED_CONFIG}catch{return EMBEDDED_CONFIG}}
-function saveConfig(c){localStorage.setItem(DEFAULT_CONFIG_KEY,JSON.stringify(c))}
-function configBox(){const c=getConfig();if(c.url&&c.key)return '';return `<div class="setup card"><h2>First-time setup</h2><p>Enter your Supabase Project URL and Publishable key. This is saved only in this browser.</p><input id="sbUrl" placeholder="https://your-project.supabase.co"><input id="sbKey" placeholder="sb_publishable_..."><button onclick="saveSupabaseConfig()">Save & continue</button></div>`}
-window.saveSupabaseConfig=()=>{const url=document.getElementById('sbUrl').value.trim().replace(/\/$/,''),key=document.getElementById('sbKey').value.trim();if(!url||!key)return alert('Enter both values.');saveConfig({url,key});location.reload()};
-function money(v){return '₹'+Number(v||0).toLocaleString('en-IN',{maximumFractionDigits:2})}
-function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-let sb,auctionChannel,camChannel,camPeer,viewerId=Math.random().toString(36).slice(2),pendingIce=[];
+const DEFAULT_CONFIG_KEY = "churchAuctionConfig";
+const EMBEDDED_CONFIG = {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};
+
+function getConfig(){
+ try{const saved=JSON.parse(localStorage.getItem(DEFAULT_CONFIG_KEY)||"{}");return saved.url&&saved.key?saved:EMBEDDED_CONFIG;}
+ catch{return EMBEDDED_CONFIG;}
+}
+function saveConfig(c) { localStorage.setItem(DEFAULT_CONFIG_KEY, JSON.stringify(c)); }
+
+function configBox() {
+  const c = getConfig();
+  if (c.url && c.key) return "";
+  return `
+    <div class="setup card">
+      <h2>First-time setup</h2>
+      <p>Enter your Supabase Project URL and Publishable key. This is saved only in this browser.</p>
+      <input id="sbUrl" placeholder="https://your-project.supabase.co" />
+      <input id="sbKey" placeholder="sb_publishable_..." />
+      <button onclick="saveSupabaseConfig()">Save & continue</button>
+    </div>`;
+}
+window.saveSupabaseConfig = () => {
+  const url = document.getElementById("sbUrl").value.trim().replace(/\/$/,"");
+  const key = document.getElementById("sbKey").value.trim();
+  if (!url || !key) return alert("Enter both values.");
+  saveConfig({url,key});
+  location.reload();
+};
+
+function money(v) {
+  return "₹" + Number(v || 0).toLocaleString("en-IN", {maximumFractionDigits: 2});
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+</script>
+<script>
+let sb,channel,camChannel,camPeer,viewerId=Math.random().toString(36).slice(2);
 async function init(){
-  const c=getConfig();document.getElementById('setupArea').innerHTML=configBox();if(!c.url||!c.key)return;
-  sb=supabase.createClient(c.url,c.key);document.getElementById('app').classList.remove('hidden');
-  await loadState();
-  auctionChannel=sb.channel('auction-live-tv').on('postgres_changes',{event:'UPDATE',schema:'public',table:'auction_state',filter:'id=eq.1'},p=>renderState(p.new)).on('postgres_changes',{event:'INSERT',schema:'public',table:'bids'},loadState).subscribe();
-  setupCameraViewer();
+ const c=getConfig();document.getElementById("setupArea").innerHTML=configBox();if(!c.url||!c.key)return;
+ sb=supabase.createClient(c.url,c.key);document.getElementById("app").classList.remove("hidden");await refresh();
+ channel=sb.channel("auction-live").on("postgres_changes",{event:"*",schema:"public",table:"auction_state"},refresh).subscribe();
+ setupCameraViewer();
 }
-async function loadState(){const {data,error}=await sb.from('auction_state').select('*').eq('id',1).single();if(!error&&data)renderState(data)}
-function renderState(data){
- document.getElementById('itemLabel').textContent=`Item ${data.item_number}: ${data.item_name}`;
- document.getElementById('currentBid').textContent=money(data.current_bid);
- document.getElementById('highest').textContent=data.highest_bidder?`${esc(data.highest_bidder)} (${data.highest_bid_source})`:'No bidder';
- document.getElementById('status').textContent=String(data.status||'waiting').toUpperCase();
- const sold=['sold','sold_out'].includes(String(data.status).toLowerCase());document.getElementById('soldOverlay').classList.toggle('show',sold);
- const parts=String(data.highest_bidder||'').split('|||');const winner=parts[0]||'Winner';const email=parts[1]||'';document.getElementById('soldEmail').textContent=sold?email:'';document.getElementById('soldSub').textContent=sold?`${winner} • ${money(data.current_bid)}`:'';
-}
-function newPeer(){
- const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
- pc.onicecandidate=e=>{if(e.candidate)camChannel.send({type:'broadcast',event:'ice',payload:{id:viewerId,candidate:e.candidate}})};
- pc.ontrack=e=>{const v=document.getElementById('cameraVideo');if(v.srcObject!==e.streams[0])v.srcObject=e.streams[0];v.play().catch(()=>{});document.getElementById('cameraStatus').textContent='🔴 LIVE PRODUCT CAMERA'};
- pc.onconnectionstatechange=()=>{if(['failed','disconnected','closed'].includes(pc.connectionState))document.getElementById('cameraStatus').textContent='Reconnecting to church camera…'};
- return pc;
+async function refresh(){const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();if(error)return;
+ document.getElementById("itemLabel").textContent=`Item ${data.item_number}: ${data.item_name}`;
+ document.getElementById("currentBid").textContent=money(data.current_bid);
+ document.getElementById("highest").textContent=data.highest_bidder?`${esc(data.highest_bidder)} (${data.highest_bid_source})`:"No bidder";
+ document.getElementById("status").textContent=data.status.toUpperCase();
+ const sold = ["sold","sold_out"].includes(String(data.status).toLowerCase());
+ document.getElementById("soldOverlay").classList.toggle("show", sold);
+ const parts=String(data.highest_bidder||"").split("|||");
+ const winner=parts[0]||"Winner";
+ const email=parts[1]||"";
+ const emailEl=document.getElementById("soldEmail");
+ if(emailEl) emailEl.textContent=sold?email:"";
+ document.getElementById("soldSub").textContent=sold?`${winner} • ${money(data.current_bid)}`:"";
 }
 async function setupCameraViewer(){
- camChannel=sb.channel('church-auction-camera-v1',{config:{broadcast:{ack:true}}});
- camChannel.on('broadcast',{event:'offer'},async({payload})=>{
-   if(!payload||payload.id!==viewerId)return;
-   try{if(camPeer)camPeer.close();camPeer=newPeer();await camPeer.setRemoteDescription(payload.description);for(const c of pendingIce.splice(0))try{await camPeer.addIceCandidate(c)}catch(e){}const ans=await camPeer.createAnswer();await camPeer.setLocalDescription(ans);await camChannel.send({type:'broadcast',event:'answer',payload:{id:viewerId,description:camPeer.localDescription}})}catch(e){document.getElementById('cameraStatus').textContent='Camera connection error — retrying…';setTimeout(()=>joinCamera(),1500)}
- }).on('broadcast',{event:'ice'},async({payload})=>{
-   if(!payload||payload.id!==viewerId||!payload.candidate)return;
-   if(!camPeer||!camPeer.remoteDescription){pendingIce.push(payload.candidate);return;}
-   try{await camPeer.addIceCandidate(payload.candidate)}catch(e){}
- }).subscribe(async status=>{if(status==='SUBSCRIBED')await joinCamera();});
+ camChannel=sb.channel("church-auction-camera-v1",{config:{broadcast:{ack:true}}});
+ camChannel.on("broadcast",{event:"offer"},async ({payload})=>{
+   if(payload.id!==viewerId)return;
+   if(camPeer)camPeer.close();
+   camPeer=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
+   camPeer.ontrack=e=>{document.getElementById('cameraVideo').srcObject=e.streams[0];document.getElementById('cameraStatus').textContent='🔴 LIVE PRODUCT CAMERA';};
+   camPeer.onicecandidate=e=>{if(e.candidate)camChannel.send({type:'broadcast',event:'ice',payload:{id:viewerId,candidate:e.candidate}})};
+   await camPeer.setRemoteDescription(payload.description);const ans=await camPeer.createAnswer();await camPeer.setLocalDescription(ans);
+   await camChannel.send({type:'broadcast',event:'answer',payload:{id:viewerId,description:camPeer.localDescription}});
+ }).on('broadcast',{event:'ice'},async ({payload})=>{if(payload.id!==viewerId||!camPeer||!payload.candidate)return;try{await camPeer.addIceCandidate(payload.candidate)}catch(e){}}).subscribe(async status=>{if(status==='SUBSCRIBED'){await camChannel.send({type:'broadcast',event:'join',payload:{id:viewerId}});}});
 }
-async function joinCamera(){if(camChannel)await camChannel.send({type:'broadcast',event:'join',payload:{id:viewerId}})}
-async function toggleFullscreen(){try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen()}catch(e){console.warn(e)}}
 init();
 </script>
-</body>
-</html>
+<script>
+/* Automatic live refresh: keeps this screen synchronized without manual browser refresh. */
+setInterval(() => {
+  try {
+    if (typeof refresh === "function") refresh();
+  } catch (e) {
+    console.warn("Automatic refresh failed:", e);
+  }
+}, 1000);
+</script>
+
+<script>
+let slideshowRunning=false, slideshowTimer=null, slideshowIndex=0;
+function showSlide(index){
+  const slides=[document.getElementById('auctionSlide'),document.getElementById('cameraSlide')];
+  slides.forEach((s,i)=>s.classList.toggle('active',i===index));
+  slideshowIndex=index;
+}
+function toggleSlideshow(){
+  slideshowRunning=!slideshowRunning;
+  const btn=document.getElementById('slideshowBtn');
+  if(slideshowRunning){
+    btn.textContent='⏸ SLIDESHOW';
+    const ms=Number(document.getElementById('slideInterval').value)||10000;
+    showSlide(0);
+    slideshowTimer=setInterval(()=>showSlide(slideshowIndex===0?1:0),ms);
+  }else{
+    btn.textContent='▶ SLIDESHOW';
+    clearInterval(slideshowTimer); slideshowTimer=null;
+    showSlide(0);
+  }
+}
+document.getElementById('slideInterval').addEventListener('change',()=>{
+  if(slideshowRunning){clearInterval(slideshowTimer);const ms=Number(document.getElementById('slideInterval').value)||10000;slideshowTimer=setInterval(()=>showSlide(slideshowIndex===0?1:0),ms);}
+});
+async function toggleFullscreen(){
+  try{
+    if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
+    else await document.exitFullscreen();
+  }catch(e){console.warn(e);}
+}
+</script>
+</body></html>

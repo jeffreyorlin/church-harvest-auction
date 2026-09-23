@@ -4,7 +4,7 @@
 <title>Church Auction Bidding</title><link rel="stylesheet" href="style.css"></head>
 <body>
 <div class="wrap">
-<div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD OUT TO</div><div id="soldEmail" class="sold-email"></div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
+<div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD OUT</div><div id="soldEmail" class="sold-email"></div><div id="soldSub" class="sold-sub">This item has been sold successfully</div></div></div>
 <h1>⛪ Live Church Auction</h1>
 <div id="setupArea"></div>
 <div id="app" class="hidden">
@@ -58,7 +58,7 @@ window.saveSupabaseConfig=()=>{const url=document.getElementById("sbUrl").value.
 function money(v){return "₹"+Number(v||0).toLocaleString("en-IN",{maximumFractionDigits:2})}
 </script>
 <script>
-let sb,channel,state,camChannel,camPeer,viewerId=Math.random().toString(36).slice(2),pendingIce=[];
+let sb,channel,state,camChannel,camPeer,viewerId=Math.random().toString(36).slice(2);
 let bidderName="", bidderAddress="", bidderEmail="";
 
 async function init(){
@@ -78,7 +78,8 @@ async function init(){
 
  await refresh();
  setupCameraViewer();
- channel=sb.channel("auction-live-bid").on("postgres_changes",{event:"UPDATE",schema:"public",table:"auction_state",filter:"id=eq.1"},p=>{if(p.new)refreshFromState(p.new);}).on("postgres_changes",{event:"INSERT",schema:"public",table:"bids"},p=>{if(p.new && state && Number(p.new.item_number)===Number(state.item_number)) refresh();}).subscribe();
+ channel=sb.channel("auction-live").on("postgres_changes",{event:"UPDATE",schema:"public",table:"auction_state",filter:"id=eq.1"},refresh).subscribe();
+ setInterval(refresh,1000);
 
  sb.auth.onAuthStateChange((_event, newSession)=>{
    if(newSession){
@@ -148,51 +149,54 @@ window.saveProfile=()=>{
 
 window.changeBidder=()=>{localStorage.removeItem("churchAuctionBidderName");localStorage.removeItem("churchAuctionBidderAddress");loadProfile();};
 
-function refreshFromState(data){
+async function refresh(){
+ const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();
+ if(error)return;
  state=data;
  document.getElementById("itemLabel").textContent=`Item ${data.item_number}: ${data.item_name}`;
  document.getElementById("currentBid").textContent=money(data.current_bid);
  document.getElementById("highest").textContent=data.highest_bidder?`${data.highest_bidder} (${data.highest_bid_source})`:"No bidder";
- document.getElementById("status").textContent=String(data.status||"waiting").toUpperCase();
- const sold=["sold","sold_out"].includes(String(data.status).toLowerCase());
- document.getElementById("soldOverlay").classList.toggle("show",sold);
- const parts=String(data.highest_bidder||"").split("|||");
- const winner=parts[0]||"Winner";
- const email=parts[1]||"";
- const emailEl=document.getElementById("soldEmail");if(emailEl)emailEl.textContent=sold?email:"";
- document.getElementById("soldSub").textContent=sold?`${winner} • ${money(data.current_bid)}`:"";
+ document.getElementById("status").textContent=data.status.toUpperCase();
+ const sold = ["sold","sold_out"].includes(String(data.status).toLowerCase());
+ document.getElementById("soldOverlay").classList.toggle("show", sold);
+ const parts = String(data.highest_bidder || "").split("|||");
+ const winner = parts[0] || "Winner";
+ const email = parts[1] || "";
+ const emailEl = document.getElementById("soldEmail");
+ if(emailEl) emailEl.textContent = sold ? email : "";
+ document.getElementById("soldSub").textContent = sold
+   ? `${winner} • ${money(data.current_bid)}`
+   : "";
+ const bidCard=document.getElementById("bidCard");
+ const amount=document.getElementById("amount");
+ const bidButton=bidCard?.querySelector("button.primary");
+ if(bidCard){bidCard.classList.toggle("sold-disabled", sold);}
+ if(amount) amount.disabled=sold;
+ if(bidButton) bidButton.disabled=sold;
 }
-async function refresh(){const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();if(!error&&data)refreshFromState(data)}
 
 async function bid(){
  const amount=Number(document.getElementById("amount").value),msg=document.getElementById("msg");
  msg.textContent="";
  if(!bidderName)return msg.textContent="Please enter your name first.";
  if(!amount)return msg.textContent="Enter your bid.";
- const {data,error}=await sb.rpc("place_bid",{p_item_number:state.item_number,p_bidder_name:bidderName,p_bidder_address:bidderAddress,p_amount:amount,p_source:"online"});
+ const {data,error}=await sb.rpc("place_bid",{p_item_number:state.item_number,p_bidder_name:(bidderName+"|||"+bidderEmail),p_amount:amount,p_source:"online"});
  if(error)msg.textContent="❌ "+error.message;
  else{msg.textContent=data.ok?"✅ Bid accepted!":"❌ "+data.message;if(data.ok){document.getElementById("amount").value="";await refresh();}}
 }
 
-function newCameraPeer(){
- const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
- pc.onicecandidate=e=>{if(e.candidate)camChannel.send({type:'broadcast',event:'ice',payload:{id:viewerId,candidate:e.candidate}})};
- pc.ontrack=e=>{const v=document.getElementById('cameraVideo');if(v.srcObject!==e.streams[0])v.srcObject=e.streams[0];v.play().catch(()=>{});document.getElementById('cameraStatus').textContent='🔴 LIVE PRODUCT CAMERA'};
- pc.onconnectionstatechange=()=>{if(['failed','disconnected','closed'].includes(pc.connectionState))document.getElementById('cameraStatus').textContent='Reconnecting to church camera…'};
- return pc;
-}
 async function setupCameraViewer(){
- camChannel=sb.channel('church-auction-camera-v1',{config:{broadcast:{ack:true}}});
- camChannel.on('broadcast',{event:'offer'},async({payload})=>{
-   if(!payload||payload.id!==viewerId)return;
-   try{if(camPeer)camPeer.close();camPeer=newCameraPeer();await camPeer.setRemoteDescription(payload.description);for(const c of pendingIce.splice(0))try{await camPeer.addIceCandidate(c)}catch(e){}const ans=await camPeer.createAnswer();await camPeer.setLocalDescription(ans);await camChannel.send({type:'broadcast',event:'answer',payload:{id:viewerId,description:camPeer.localDescription}})}catch(e){document.getElementById('cameraStatus').textContent='Camera connection error — retrying…';setTimeout(()=>joinCamera(),1500)}
- }).on('broadcast',{event:'ice'},async({payload})=>{
-   if(!payload||payload.id!==viewerId||!payload.candidate)return;
-   if(!camPeer||!camPeer.remoteDescription){pendingIce.push(payload.candidate);return;}
-   try{await camPeer.addIceCandidate(payload.candidate)}catch(e){}
- }).subscribe(async status=>{if(status==='SUBSCRIBED')await joinCamera();});
+ camChannel=sb.channel("church-auction-camera-v1",{config:{broadcast:{ack:true}}});
+ camChannel.on('broadcast',{event:'offer'},async ({payload})=>{
+   if(payload.id!==viewerId)return;
+   if(camPeer)camPeer.close();
+   camPeer=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
+   camPeer.ontrack=e=>{document.getElementById('cameraVideo').srcObject=e.streams[0];document.getElementById('cameraStatus').textContent='🔴 LIVE PRODUCT CAMERA';};
+   camPeer.onicecandidate=e=>{if(e.candidate)camChannel.send({type:'broadcast',event:'ice',payload:{id:viewerId,candidate:e.candidate}})};
+   await camPeer.setRemoteDescription(payload.description);const ans=await camPeer.createAnswer();await camPeer.setLocalDescription(ans);
+   await camChannel.send({type:'broadcast',event:'answer',payload:{id:viewerId,description:camPeer.localDescription}});
+ }).on('broadcast',{event:'ice'},async ({payload})=>{if(payload.id!==viewerId||!camPeer||!payload.candidate)return;try{await camPeer.addIceCandidate(payload.candidate)}catch(e){}}).subscribe(async status=>{if(status==='SUBSCRIBED'){await camChannel.send({type:'broadcast',event:'join',payload:{id:viewerId}});}});
 }
-async function joinCamera(){if(camChannel)await camChannel.send({type:'broadcast',event:'join',payload:{id:viewerId}})}
 
 init();
 </script>
