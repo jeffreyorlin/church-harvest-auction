@@ -65,48 +65,60 @@ async function init(){document.getElementById('setupArea').innerHTML=box();const
 window.logout=async()=>{stopCamera();await sb.auth.signOut();location.reload()}
 async function startCamera(){
   const msg=document.getElementById('camMsg');
+  const preview=document.getElementById('preview');
+  const startBtn=document.getElementById('startBtn');
+  const stopBtn=document.getElementById('stopBtn');
   try{
+    if(!window.isSecureContext){
+      msg.textContent='Camera error: Open this website using HTTPS (or http://localhost). Do not open camera.html directly as a file.';
+      return;
+    }
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      throw new Error('Camera API is unavailable. Open this page using HTTPS or localhost.');
+      msg.textContent='Camera error: Your browser does not provide camera access. Use the latest Chrome/Edge and allow camera permission.';
+      return;
     }
 
-    // Try the requested 4K quality first, then automatically fall back.
-    const profiles=[
-      {label:'4K', video:{facingMode:{ideal:'environment'},width:{ideal:3840},height:{ideal:2160},frameRate:{ideal:30,max:30}}},
-      {label:'1080p', video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}}},
-      {label:'720p', video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}}},
-      {label:'standard', video:{facingMode:{ideal:'environment'},frameRate:{ideal:30}}}
-    ];
-
-    let lastError=null;
-    for(const profile of profiles){
-      try{
-        stream=await navigator.mediaDevices.getUserMedia({
-          video:profile.video,
-          audio:false
-        });
-        const track=stream.getVideoTracks()[0];
-        const settings=track.getSettings();
-        msg.textContent='LIVE — '+(settings.width||'?')+'×'+(settings.height||'?')+
-          ' ('+profile.label+') — remote viewers can now see this camera.';
-        document.getElementById('preview').srcObject=stream;
-        document.getElementById('startBtn').classList.add('hidden');
-        document.getElementById('stopBtn').classList.remove('hidden');
-        return;
-      }catch(e){
-        lastError=e;
-        if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+    // IMPORTANT: start with the simplest possible request. Some phones/webcams
+    // reject 4K constraints even though they support camera access.
+    msg.textContent='Requesting camera permission...';
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+    }catch(e){
+      console.error('Basic getUserMedia failed:',e);
+      if(e.name==='NotAllowedError' || e.name==='PermissionDeniedError'){
+        msg.textContent='Camera permission denied. In Chrome, click the camera/lock icon near the address bar → Camera → Allow, then reload this page.';
+      }else if(e.name==='NotFoundError' || e.name==='DevicesNotFoundError'){
+        msg.textContent='No camera found. Check that the phone/webcam camera is available and not disabled.';
+      }else if(e.name==='NotReadableError' || e.name==='TrackStartError'){
+        msg.textContent='Camera is busy. Close WhatsApp/Meet/Zoom/Camera and other apps using the camera, then try again.';
+      }else if(e.name==='SecurityError'){
+        msg.textContent='Camera blocked by browser security. Open the site with HTTPS.';
+      }else{
+        msg.textContent='Camera error: '+(e.message||e.name||String(e));
       }
+      return;
     }
-    throw lastError || new Error('Unable to access camera.');
+
+    const track=stream.getVideoTracks()[0];
+    preview.srcObject=stream;
+    try{ await preview.play(); }catch(_){ }
+
+    // After the camera is already working, request the highest supported quality.
+    // Failure here must NOT stop the camera.
+    try{
+      if(track && track.applyConstraints){
+        await track.applyConstraints({width:{ideal:3840},height:{ideal:2160},frameRate:{ideal:30}});
+      }
+    }catch(e){ console.warn('High-resolution request ignored:',e); }
+
+    const settings=track && track.getSettings ? track.getSettings() : {};
+    msg.textContent='LIVE — '+(settings.width||'?')+'×'+(settings.height||'?')+' — Camera connected successfully.';
+    startBtn.classList.add('hidden');
+    stopBtn.classList.remove('hidden');
   }catch(e){
     console.error('Camera error:',e);
-    let detail=e && e.message ? e.message : String(e);
-    if(e && e.name==='NotAllowedError') detail='Camera permission was denied. Allow camera access in your browser.';
-    else if(e && e.name==='NotFoundError') detail='No camera was found on this device.';
-    else if(e && e.name==='NotReadableError') detail='The camera is already being used by another application.';
-    else if(e && e.name==='SecurityError') detail='Camera access requires HTTPS or localhost.';
-    msg.textContent='Camera error: '+detail;
+    if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+    msg.textContent='Camera error: '+(e.message||e.name||String(e));
   }
 }
 async function makeOffer(id){if(peers.has(id))peers.get(id).close();const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});peers.set(id,pc);stream.getTracks().forEach(t=>{const sender=pc.addTrack(t,stream); if(sender&&sender.getParameters){const params=sender.getParameters(); params.encodings=params.encodings||[{}]; params.encodings[0].maxBitrate=18000000; params.encodings[0].maxFramerate=30; sender.setParameters(params).catch(()=>{});}});pc.onicecandidate=e=>{if(e.candidate)channel.send({type:'broadcast',event:'ice',payload:{id,candidate:e.candidate}})};const offer=await pc.createOffer();await pc.setLocalDescription(offer);await channel.send({type:'broadcast',event:'offer',payload:{id,description:pc.localDescription}})}
