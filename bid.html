@@ -5,18 +5,19 @@
 <body>
 <div class="wrap">
 <div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD OUT</div><div id="soldEmail" class="sold-email"></div><div id="soldSub" class="sold-sub">This item has been sold successfully</div></div></div>
-<h1>⛪ Live Church Auction</h1>
+<div class="bid-church-name">CSI MEETPAR YESU ALAYAM</div><h1 class="bid-page-title">⛪ Live Church Auction <span class="live-badge">● LIVE</span></h1>
 <div id="setupArea"></div>
 <div id="app" class="hidden">
-  <div class="card center">
-    <div id="itemLabel" class="muted">Waiting...</div>
-    <div id="currentBid" class="big">₹0</div>
-    <div id="highest">No bidder</div>
-    <span id="status" class="status">WAITING</span>
+  <div class="card center bid-hero-card">
+    <div class="auction-orbit orbit-one"></div><div class="auction-orbit orbit-two"></div>
+    <div id="itemLabel" class="muted bid-item-animated">Waiting...</div>
+    <div id="currentBid" class="big bid-amount-animated">₹0</div>
+    <div id="highest" class="bid-highest-animated">No bidder</div>
+    <span id="status" class="status bid-status-animated">WAITING</span>
   </div>
 
   <div class="card">
-    <h2>📹 LIVE PRODUCT</h2>
+    <h2 class="section-title-animated">📹 LIVE PRODUCT <span class="camera-live-pill">● LIVE</span></h2>
     <video id="cameraVideo" class="cameraLive" autoplay playsinline controls></video>
     <div id="cameraStatus" class="cameraStatus muted">Waiting for church camera…</div>
   </div>
@@ -40,7 +41,7 @@
   </div>
 
   <div id="bidCard" class="card hidden">
-    <h2>Place your online bid</h2>
+    <h2 class="section-title-animated">⚡ Place your online bid</h2>
     <p class="small">Bidding as <strong id="userName"></strong></p>
     <input id="amount" type="number" min="0" step="1" placeholder="Enter higher bid ₹">
     <button class="primary" onclick="bid()">PLACE BID</button>
@@ -166,12 +167,21 @@ window.saveProfile=async()=>{
 
 window.changeBidder=()=>{localStorage.removeItem("churchAuctionBidderName");localStorage.removeItem("churchAuctionBidderAddress");localStorage.removeItem("churchAuctionBidderAge");loadProfile();};
 
+let previousBidValue = null;
 async function refresh(){
  const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();
  if(error)return;
  state=data;
  document.getElementById("itemLabel").textContent=`Item ${data.item_number}: ${data.item_name}`;
- document.getElementById("currentBid").textContent=money(data.current_bid);
+ const bidEl=document.getElementById("currentBid");
+ const bidChanged = previousBidValue !== null && Number(previousBidValue) !== Number(data.current_bid);
+ bidEl.textContent=money(data.current_bid);
+ if(bidChanged){
+   bidEl.classList.remove("bid-bump");
+   void bidEl.offsetWidth;
+   bidEl.classList.add("bid-bump");
+ }
+ previousBidValue = Number(data.current_bid);
  document.getElementById("highest").textContent=data.highest_bidder?`${String(data.highest_bidder).split("|||")[0]} (${data.highest_bid_source})`:"No bidder";
  document.getElementById("status").textContent=data.status.toUpperCase();
  const sold = ["sold","sold_out"].includes(String(data.status).toLowerCase());

@@ -5,6 +5,7 @@
 <div class="tv-shell">
   <div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD OUT TO</div><div id="soldEmail" class="sold-email"></div><div id="soldSub" class="sold-sub">Item sold successfully</div></div></div>
   <div class="tv-topbar">
+    <div class="tv-church-name">CSI MEETPAR YESU ALAYAM</div>
     <div class="tv-title">⛪ CHURCH AUCTION</div>
     <div class="tv-controls">
       <button id="slideshowBtn" onclick="toggleSlideshow()">▶ SLIDESHOW</button>
@@ -25,6 +26,10 @@
         <div id="currentBid" class="tv-bid">₹0</div>
         <div id="highest" class="tv-highest">No bidder</div>
         <span id="status" class="status">WAITING</span>
+      </div>
+      <div class="tv-mini-camera">
+        <div class="tv-mini-camera-head"><span>📹 LIVE PRODUCT CAMERA</span><span id="miniCameraStatus">● LIVE</span></div>
+        <video id="miniCameraVideo" class="tv-mini-camera-video" autoplay playsinline muted></video>
       </div>
     </section>
     <section id="cameraSlide" class="tv-slide">
@@ -103,7 +108,7 @@ async function setupCameraViewer(){
    if(payload.id!==viewerId)return;
    if(camPeer)camPeer.close();
    camPeer=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
-   camPeer.ontrack=e=>{document.getElementById('cameraVideo').srcObject=e.streams[0];document.getElementById('cameraStatus').textContent='🔴 LIVE PRODUCT CAMERA';};
+   camPeer.ontrack=e=>{const stream=e.streams[0];document.getElementById('cameraVideo').srcObject=stream;const mini=document.getElementById('miniCameraVideo');if(mini)mini.srcObject=stream;document.getElementById('cameraStatus').textContent='🔴 LIVE PRODUCT CAMERA';const miniStatus=document.getElementById('miniCameraStatus');if(miniStatus)miniStatus.textContent='● LIVE';};
    camPeer.onicecandidate=e=>{if(e.candidate)camChannel.send({type:'broadcast',event:'ice',payload:{id:viewerId,candidate:e.candidate}})};
    await camPeer.setRemoteDescription(payload.description);const ans=await camPeer.createAnswer();await camPeer.setLocalDescription(ans);
    await camChannel.send({type:'broadcast',event:'answer',payload:{id:viewerId,description:camPeer.localDescription}});
