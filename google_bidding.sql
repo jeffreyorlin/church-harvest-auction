@@ -101,6 +101,8 @@ create table if not exists public.underage_bidding_attempts (
 );
 
 alter table public.underage_bidding_attempts enable row level security;
+drop policy if exists "authenticated delete underage attempts" on public.underage_bidding_attempts;
+create policy "authenticated delete underage attempts" on public.underage_bidding_attempts for delete to authenticated using (true);
 drop policy if exists "authenticated read underage attempts" on public.underage_bidding_attempts;
 create policy "authenticated read underage attempts" on public.underage_bidding_attempts
 for select to authenticated using (true);

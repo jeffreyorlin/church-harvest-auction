@@ -81,11 +81,16 @@ async function startCamera(){
       return;
     }
 
-    // IMPORTANT: start with the simplest possible request. Some phones/webcams
-    // reject 4K constraints even though they support camera access.
-    msg.textContent='Requesting camera permission...';
+    // Request Full HD 1920×1080 at 30 FPS first. If the device cannot provide
+    // that exact mode, fall back to the best supported HD mode without stopping.
+    msg.textContent='Requesting Full HD 1920×1080 camera at 30 FPS...';
     try{
-      stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+      try{
+        stream=await navigator.mediaDevices.getUserMedia({video:{width:{exact:1920},height:{exact:1080},frameRate:{exact:30}},audio:false});
+      }catch(exactErr){
+        console.warn('Exact 1920×1080@30 unavailable; using best supported mode:', exactErr);
+        stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}},audio:false});
+      }
     }catch(e){
       console.error('Basic getUserMedia failed:',e);
       if(e.name==='NotAllowedError' || e.name==='PermissionDeniedError'){
@@ -106,16 +111,23 @@ async function startCamera(){
     preview.srcObject=stream;
     try{ await preview.play(); }catch(_){ }
 
-    // After the camera is already working, request 1920×1080 at 30 FPS.
-    // Failure here must NOT stop the camera; the browser will keep the best supported mode.
+    // Re-apply Full HD + 30 FPS when supported. Exact constraints are used so
+    // the browser does not silently settle at 1280×720 when 1080p is available.
     try{
       if(track && track.applyConstraints){
-        await track.applyConstraints({width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}});
+        try{
+          await track.applyConstraints({width:{exact:1920},height:{exact:1080},frameRate:{exact:30}});
+        }catch(exactErr){
+          console.warn('Exact 1920×1080@30 applyConstraints unavailable:', exactErr);
+          await track.applyConstraints({width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}}).catch(()=>{});
+        }
       }
-    }catch(e){ console.warn('High-resolution request ignored:',e); }
+    }catch(e){ console.warn('Camera constraints ignored:',e); }
 
     const settings=track && track.getSettings ? track.getSettings() : {};
-    msg.textContent='LIVE — '+(settings.width||'?')+'×'+(settings.height||'?')+' — Camera connected successfully.';
+    const actualFps=settings.frameRate ? Math.round(settings.frameRate) : '?';
+    const isFullHD=settings.width===1920 && settings.height===1080;
+    msg.textContent='LIVE — '+(settings.width||'?')+'×'+(settings.height||'?')+' @ '+actualFps+' FPS'+(isFullHD?' — FULL HD':' — device/browser mode')+' — Camera connected successfully.';
     startBtn.classList.add('hidden');
     stopBtn.classList.remove('hidden');
   }catch(e){

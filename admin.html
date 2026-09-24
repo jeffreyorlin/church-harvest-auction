@@ -195,17 +195,23 @@ function clearAgeLimitNotification(){
 }
 async function deleteUnderageAttempt(id){
  if(!confirm("Delete this under-18 bidding attempt?")) return;
- const {data,error}=await sb.rpc("delete_underage_bidding_attempt",{p_id:id});
+ let {error}=await sb.from("underage_bidding_attempts").delete().eq("id",id);
+ if(error){
+   const rpc=await sb.rpc("delete_underage_bidding_attempt",{p_id:id});
+   error=rpc.error || (rpc.data && !rpc.data.ok ? new Error(rpc.data.message||"Delete failed") : null);
+ }
  if(error){showMsg("Unable to delete under-18 attempt: "+error.message);return;}
- if(!data || !data.ok){showMsg((data&&data.message)||"Unable to delete under-18 attempt.");return;}
  await loadUnderageAttempts();
  showMsg("Under-18 attempt deleted.",true);
 }
 async function deleteAllUnderageAttempts(){
  if(!confirm("Delete ALL recorded under-18 bidding attempts? This cannot be undone.")) return;
- const {data,error}=await sb.rpc("delete_all_underage_bidding_attempts");
+ let {error}=await sb.from("underage_bidding_attempts").delete().neq("id",-1);
+ if(error){
+   const rpc=await sb.rpc("delete_all_underage_bidding_attempts");
+   error=rpc.error || (rpc.data && !rpc.data.ok ? new Error(rpc.data.message||"Delete failed") : null);
+ }
  if(error){showMsg("Unable to delete under-18 attempts: "+error.message);return;}
- if(!data || !data.ok){showMsg((data&&data.message)||"Unable to delete under-18 attempts.");return;}
  await loadUnderageAttempts();
  showMsg("All under-18 bidding attempts deleted.",true);
 }
