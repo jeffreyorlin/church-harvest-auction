@@ -4,6 +4,16 @@
 <title>Church Auction Camera</title><link rel="stylesheet" href="style.css"></head>
 <body>
 <div class="church-brand tv-brand-bar"><span class="brand-cross">✝️</span> CSI MEEETPAR YESU ALAYAM</div><style>
+.camera-controls{margin:14px auto 0;max-width:900px;padding:14px;border:1px solid #33415f;border-radius:14px;background:#0d1728;text-align:left}
+.camera-control-row,.camera-rotation-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}
+.camera-control-row label,.camera-rotation-row>span{font-weight:900;white-space:nowrap}
+.camera-control-row input[type=range]{flex:1;min-width:180px}
+#zoomNumber{width:82px;padding:9px;border-radius:8px;border:1px solid #50607a;background:#101a2b;color:#fff;font-weight:800}
+#zoomActual{min-width:48px;font-weight:900;color:#ffd54a}
+.rotationBtn{padding:9px 11px;border-radius:8px;border:1px solid #50607a;background:#18243a;color:#fff;font-weight:800;cursor:pointer}
+.rotationBtn.active{background:#ffd54a;color:#111;border-color:#ffd54a}
+#preview{transform-origin:center center;transition:transform .18s ease}
+.hidden{display:none!important}
 #cameraPassGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#0b1220;color:#fff}
 #cameraPassGate .pass-box{width:min(92vw,400px);padding:28px;border-radius:18px;background:#151f33;text-align:center;box-shadow:0 10px 40px #0008}
 #cameraPassGate input{width:100%;box-sizing:border-box;padding:15px;margin:14px 0;border-radius:10px;border:0;font-size:24px;text-align:center;letter-spacing:7px;background:#eef2f7;color:#111}
@@ -50,6 +60,21 @@ document.body.classList.add('camera-locked');
     <h2>Live Product Camera</h2>
     <video id="preview" autoplay muted playsinline></video>
     <div><button class="primary" id="startBtn" onclick="startCamera()">START CAMERA</button><button id="switchBtn" onclick="switchCamera()" class="hidden">🔄 SWITCH FRONT / BACK</button><button id="stopBtn" onclick="stopCamera()" class="hidden">STOP CAMERA</button></div>
+    <div id="cameraControls" class="camera-controls hidden">
+      <div class="camera-control-row">
+        <label for="zoomRange">🔍 ZOOM</label>
+        <input id="zoomRange" type="range" min="1" max="4" step="0.1" value="1" disabled>
+        <input id="zoomNumber" type="number" min="1" max="4" step="0.1" value="1" inputmode="decimal" disabled>
+        <span id="zoomActual">1.0×</span>
+      </div>
+      <div class="camera-rotation-row">
+        <span>🔄 ROTATION</span>
+        <button type="button" class="rotationBtn active" data-rotation="0">CAMERA 0°</button>
+        <button type="button" class="rotationBtn" data-rotation="90">CAMERA 90°</button>
+        <button type="button" class="rotationBtn" data-rotation="180">CAMERA 180°</button>
+        <button type="button" class="rotationBtn" data-rotation="270">CAMERA 270°</button>
+      </div>
+    </div>
     <p id="camMsg" class="small muted">Point this phone at the product. Keep this page open during the auction.</p>
   </div>
 </div></div>
@@ -74,7 +99,7 @@ async function loadSupabaseClient(){
   return false;
 }
 
-const KEY='churchAuctionConfig', ROOM='church-auction-camera-v1'; let sb, channel, stream=null, peers=new Map(); let cameraUser=null;
+const KEY='churchAuctionConfig', ROOM='church-auction-camera-v1'; let sb, channel, stream=null, peers=new Map(); let cameraUser=null; let cameraZoom=1; let cameraRotation=0;
 const ICE_SERVERS=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}];
 const pendingIce=new Map();
 function cfg(){try{const saved=JSON.parse(localStorage.getItem(KEY)||"{}");return saved.url&&saved.key?saved:{url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}catch{return {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}}
@@ -114,6 +139,59 @@ async function init(){
   }
 }
 window.logout=async()=>{stopCamera();await sb.auth.signOut();location.reload()}
+function setRotation(rotation, broadcast=true){
+  cameraRotation=((Number(rotation)%360)+360)%360;
+  const preview=document.getElementById('preview');
+  if(preview) preview.style.transform=`rotate(${cameraRotation}deg)`;
+  document.querySelectorAll('.rotationBtn').forEach(b=>b.classList.toggle('active',Number(b.dataset.rotation)===cameraRotation));
+  if(broadcast) broadcastCameraSettings();
+}
+function broadcastCameraSettings(){
+  if(!channel)return;
+  channel.send({type:'broadcast',event:'camera-settings',payload:{zoom:Number(cameraZoom)||1,rotation:cameraRotation}}).catch(()=>{});
+}
+function updateZoomUI(actual){
+  const z=Number(actual)||1;
+  const range=document.getElementById('zoomRange'), num=document.getElementById('zoomNumber'), out=document.getElementById('zoomActual');
+  if(range) range.value=z;
+  if(num) num.value=z.toFixed(1).replace(/\.0$/,'');
+  if(out) out.textContent=z.toFixed(1)+'×';
+}
+async function applyZoom(value,broadcast=true){
+  let requested=Number(value);
+  if(!Number.isFinite(requested)) requested=1;
+  requested=Math.min(4,Math.max(1,requested));
+  const track=stream&&stream.getVideoTracks?stream.getVideoTracks()[0]:null;
+  if(!track){cameraZoom=requested;updateZoomUI(cameraZoom);return;}
+  try{
+    const caps=track.getCapabilities?track.getCapabilities():{};
+    if(caps.zoom){
+      const min=Number(caps.zoom.min??1), max=Number(caps.zoom.max??4), step=Number(caps.zoom.step??0.1)||0.1;
+      const clamped=Math.min(max,Math.max(min,requested));
+      const stepped=min+Math.round((clamped-min)/step)*step;
+      const actual=Math.min(max,Math.max(min,Number(stepped.toFixed(3))));
+      await track.applyConstraints({advanced:[{zoom:actual}]});
+      cameraZoom=actual;
+    }else{
+      cameraZoom=requested;
+    }
+  }catch(e){
+    console.warn('Zoom constraint unavailable:',e);
+    cameraZoom=requested;
+  }
+  updateZoomUI(cameraZoom);
+  if(broadcast) broadcastCameraSettings();
+}
+function initCameraControls(){
+  const range=document.getElementById('zoomRange'), num=document.getElementById('zoomNumber'), controls=document.getElementById('cameraControls');
+  range.oninput=()=>applyZoom(range.value);
+  num.onchange=()=>applyZoom(num.value);
+  num.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();applyZoom(num.value)}};
+  document.querySelectorAll('.rotationBtn').forEach(btn=>btn.onclick=()=>setRotation(btn.dataset.rotation));
+  updateZoomUI(cameraZoom);
+  if(controls) controls.classList.remove('hidden');
+}
+initCameraControls();
 async function startCamera(){
   const msg=document.getElementById('camMsg');
   const preview=document.getElementById('preview');
@@ -174,6 +252,22 @@ async function startCamera(){
     }catch(e){ console.warn('Camera constraints ignored:',e); }
 
     const settings=track && track.getSettings ? track.getSettings() : {};
+    const caps=track && track.getCapabilities ? track.getCapabilities() : {};
+    const controls=document.getElementById('cameraControls');
+    const range=document.getElementById('zoomRange'), num=document.getElementById('zoomNumber');
+    if(caps.zoom){
+      const zmin=Number(caps.zoom.min??1), zmax=Math.min(4,Number(caps.zoom.max??4));
+      if(range){range.min=zmin;range.max=zmax;range.disabled=false;}
+      if(num){num.min=zmin;num.max=zmax;num.disabled=false;}
+      cameraZoom=Math.min(zmax,Math.max(zmin,1));
+      await applyZoom(cameraZoom,false);
+    }else{
+      if(range){range.disabled=true;} if(num){num.disabled=true;}
+      cameraZoom=1; updateZoomUI(1);
+    }
+    if(controls) controls.classList.remove('hidden');
+    setRotation(cameraRotation,false);
+    broadcastCameraSettings();
     const actualFps=settings.frameRate ? Math.round(settings.frameRate) : '?';
     const isFullHD=settings.width===1920 && settings.height===1080;
     msg.textContent='LIVE — '+(settings.width||'?')+'×'+(settings.height||'?')+' @ '+actualFps+' FPS'+(isFullHD?' — FULL HD':' — device/browser mode')+' — Camera connected successfully.';
@@ -282,6 +376,20 @@ async function switchCamera(){
     preview.srcObject=newStream;
     try{await preview.play();}catch(_){ }
 
+    const caps=newTrack.getCapabilities ? newTrack.getCapabilities() : {};
+    if(caps.zoom){
+      const zmin=Number(caps.zoom.min??1), zmax=Math.min(4,Number(caps.zoom.max??4));
+      const range=document.getElementById('zoomRange'), num=document.getElementById('zoomNumber');
+      if(range){range.min=zmin;range.max=zmax;range.disabled=false;}
+      if(num){num.min=zmin;num.max=zmax;num.disabled=false;}
+      await applyZoom(Math.min(zmax,Math.max(zmin,cameraZoom)),false);
+    }else{
+      cameraZoom=1; const range=document.getElementById('zoomRange'), num=document.getElementById('zoomNumber');
+      if(range)range.disabled=true; if(num)num.disabled=true; updateZoomUI(1);
+    }
+    setRotation(cameraRotation,false);
+    broadcastCameraSettings();
+
     const settings=newTrack.getSettings ? newTrack.getSettings() : {};
     const fps=settings.frameRate ? Math.round(settings.frameRate) : '?';
     const isFullHD=settings.width===1920 && settings.height===1080;
@@ -321,8 +429,9 @@ async function makeOffer(id){
   pc.onconnectionstatechange=()=>{ if(pc.connectionState==='failed'||pc.connectionState==='closed'){ peers.delete(id); pendingIce.delete(id); } };
   const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
   await channel.send({type:'broadcast',event:'offer',payload:{id,description:pc.localDescription}});
+  await channel.send({type:'broadcast',event:'camera-settings',payload:{target:id,zoom:Number(cameraZoom)||1,rotation:cameraRotation}});
 }
 
-window.stopCamera=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;for(const pc of peers.values())pc.close();peers.clear();document.getElementById('preview').srcObject=null;document.getElementById('startBtn').classList.remove('hidden');document.getElementById('stopBtn').classList.add('hidden');document.getElementById('switchBtn').classList.add('hidden');document.getElementById('camMsg').textContent='Camera stopped.'}
+window.stopCamera=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;for(const pc of peers.values())pc.close();peers.clear();document.getElementById('preview').srcObject=null;document.getElementById('startBtn').classList.remove('hidden');document.getElementById('stopBtn').classList.add('hidden');document.getElementById('switchBtn').classList.add('hidden');document.getElementById('camMsg').textContent='Camera stopped.';const r=document.getElementById('zoomRange'),n=document.getElementById('zoomNumber');if(r)r.disabled=true;if(n)n.disabled=true;}
 init();
 </script></body></html>
