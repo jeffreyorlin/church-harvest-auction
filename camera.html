@@ -8,7 +8,7 @@
 .camera-control-row,.camera-rotation-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}
 .camera-control-row label,.camera-rotation-row>span{font-weight:900;white-space:nowrap}
 .dual-camera-panel{margin:14px auto 0;max-width:900px;padding:14px;border:1px solid #33415f;border-radius:14px;background:#091321;text-align:left}
-.dual-title{font-weight:900;font-size:18px;margin-bottom:10px}.dual-previews{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.dual-preview{background:#111c2d;border-radius:12px;padding:8px}.dual-preview video{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#000}.dual-preview button{width:100%;margin-top:8px}.dual-preview.active{outline:2px solid #ffd54a}.dual-preview.active button{background:#ffd54a;color:#111}@media(max-width:700px){.dual-previews{grid-template-columns:1fr}}
+.lens-picker{margin:12px auto 0;max-width:900px;padding:12px;border:1px solid #33415f;border-radius:12px;background:#101b2c;text-align:left}.lens-picker-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.lens-picker select{flex:1;min-width:240px;padding:11px;border-radius:8px;background:#eef2f7;color:#111;font-weight:700}.dual-title{font-weight:900;font-size:18px;margin-bottom:10px}.dual-previews{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.dual-preview{background:#111c2d;border-radius:12px;padding:8px}.dual-preview video{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#000}.dual-preview button{width:100%;margin-top:8px}.dual-preview.active{outline:2px solid #ffd54a}.dual-preview.active button{background:#ffd54a;color:#111}@media(max-width:700px){.dual-previews{grid-template-columns:1fr}}
 .camera-control-row input[type=range]{flex:1;min-width:180px}
 #zoomNumber{width:82px;padding:9px;border-radius:8px;border:1px solid #50607a;background:#101a2b;color:#fff;font-weight:800}
 #zoomActual{min-width:48px;font-weight:900;color:#ffd54a}
@@ -62,6 +62,15 @@ document.body.classList.add('camera-locked');
     <h2>Live Product Camera</h2>
     <video id="preview" autoplay muted playsinline></video>
     <div><button class="primary" id="startBtn" onclick="startCamera()">START CAMERA</button><button id="dualBtn" onclick="toggleDualCamera()" class="hidden">📷 DUAL CAMERA</button><button id="switchBtn" onclick="switchCamera()" class="hidden">🔄 SWITCH CAMERA</button><button id="stopBtn" onclick="stopCamera()" class="hidden">STOP CAMERA</button></div>
+    <div id="lensPicker" class="lens-picker hidden">
+      <div class="lens-picker-row">
+        <strong>📷 CONNECT TO LENS:</strong>
+        <select id="lensSelect"><option value="">Select a camera/lens…</option></select>
+        <button type="button" id="refreshLensBtn" onclick="refreshLensList()">🔄 REFRESH</button>
+        <button type="button" id="connectLensBtn" class="primary" onclick="connectSelectedLens()">CONNECT LENS</button>
+      </div>
+      <p id="lensMsg" class="small muted">Choose a physical camera/webcam from the list, then press CONNECT LENS.</p>
+    </div>
     <div id="dualCameraPanel" class="dual-camera-panel hidden">
       <div class="dual-title">📷 DUAL CAMERA — LENS 1 &amp; LENS 2</div>
       <div class="dual-previews">
@@ -203,6 +212,52 @@ function initCameraControls(){
   if(controls) controls.classList.remove('hidden');
 }
 initCameraControls();
+async function refreshLensList(){
+  const select=document.getElementById('lensSelect');
+  const msg=document.getElementById('lensMsg');
+  if(!select)return;
+  try{
+    if(!navigator.mediaDevices?.enumerateDevices)throw new Error('Camera device selection is not supported by this browser.');
+    // Permission is needed for useful camera names.
+    const temp=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+    temp.getTracks().forEach(t=>t.stop());
+    const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+    select.innerHTML='<option value="">Select a camera/lens…</option>';
+    devices.forEach((d,i)=>{
+      const o=document.createElement('option');
+      o.value=d.deviceId;
+      o.textContent=d.label || ('Lens '+(i+1));
+      select.appendChild(o);
+    });
+    if(msg)msg.textContent=devices.length ? devices.length+' camera/lens device(s) found. Select one and connect it.' : 'No camera/lens found.';
+  }catch(e){if(msg)msg.textContent='Could not list lenses: '+(e.message||e.name||String(e));}
+}
+async function connectSelectedLens(){
+  const select=document.getElementById('lensSelect');
+  const msg=document.getElementById('lensMsg');
+  const id=select?.value;
+  if(!id){if(msg)msg.textContent='Please select a lens first.';return;}
+  try{
+    const newStream=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:id},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:false});
+    const newTrack=newStream.getVideoTracks()[0];
+    if(!newTrack)throw new Error('The selected lens did not provide a video track.');
+    const old=stream;
+    stream=newStream;
+    const preview=document.getElementById('preview');
+    if(preview){preview.srcObject=stream;await preview.play().catch(()=>{});}
+    for(const [peerId,pc] of peers){
+      try{const sender=pc.getSenders().find(x=>x.track&&x.track.kind==='video');if(sender)await sender.replaceTrack(newTrack);}catch(e){console.warn('Lens switch failed for peer',peerId,e);}
+    }
+    if(old && !dualStreams.includes(old))old.getTracks().forEach(t=>t.stop());
+    activeDualIndex=-1;
+    await refreshCameraControlsForTrack(newTrack);
+    setRotation(cameraRotation,false);
+    broadcastCameraSettings();
+    const label=select.options[select.selectedIndex]?.textContent||'selected lens';
+    if(msg)msg.textContent='🔴 LIVE: '+label;
+    const camMsg=document.getElementById('camMsg');if(camMsg)camMsg.textContent='LIVE — '+label+' connected successfully.';
+  }catch(e){if(msg)msg.textContent='Could not connect lens: '+(e.message||e.name||String(e));}
+}
 async function toggleDualCamera(){
   const panel=document.getElementById('dualCameraPanel');
   const btn=document.getElementById('dualBtn');
@@ -394,6 +449,8 @@ async function startCamera(){
     stopBtn.classList.remove('hidden');
     switchBtn.classList.remove('hidden');
     document.getElementById('dualBtn')?.classList.remove('hidden');
+    document.getElementById('lensPicker')?.classList.remove('hidden');
+    refreshLensList();
   }catch(e){
     console.error('Camera error:',e);
     if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
