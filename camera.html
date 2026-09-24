@@ -1,9 +1,11 @@
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Church Auction Camera</title><link rel="stylesheet" href="style.css"></head>
+<title>Church Auction Camera</title><link rel="stylesheet" href="style.css"><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script></head>
 <body>
 <div class="church-brand tv-brand-bar"><span class="brand-cross">✝️</span> CSI MEEETPAR YESU ALAYAM</div><style>
+.lens-connect-panel{margin:14px auto 0;max-width:900px;padding:14px;border:1px solid #33415f;border-radius:14px;background:#091321;text-align:left}.lens-qr-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:12px}.lens-qr{background:#111c2d;border-radius:12px;padding:12px;text-align:center}.lens-qr h3{margin:4px 0 10px}.qr-box{width:180px;height:180px;margin:0 auto 10px;background:#fff;padding:8px;border-radius:10px}.qr-box img,.qr-box canvas{max-width:100%;max-height:100%}.scanner-box{margin-top:14px;display:none}.scanner-box.show{display:block}.scanner-video{width:100%;max-width:500px;aspect-ratio:4/3;object-fit:cover;background:#000;border-radius:12px}.lens-status{font-weight:800;color:#ffd54a;margin-top:8px}.remote-lens-card{margin-top:12px;padding:10px;border-radius:10px;background:#101b2c;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}.remote-lens-card .online{color:#78e08f}.mobile-camera-tip{display:none}@media(max-width:700px){.lens-qr-grid{grid-template-columns:1fr}.mobile-camera-tip{display:block}.camera-controls{padding:10px}.camera-control-row,.camera-rotation-row{display:grid;grid-template-columns:1fr;gap:8px}.camera-control-row input[type=range]{width:100%;min-width:0}.rotationBtn{width:100%;padding:12px}.lens-picker-row{display:grid;grid-template-columns:1fr}.lens-picker select{min-width:0;width:100%}}
 .camera-controls{margin:14px auto 0;max-width:900px;padding:14px;border:1px solid #33415f;border-radius:14px;background:#0d1728;text-align:left}
 .camera-control-row,.camera-rotation-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}
 .camera-control-row label,.camera-rotation-row>span{font-weight:900;white-space:nowrap}
@@ -71,6 +73,24 @@ document.body.classList.add('camera-locked');
       </div>
       <p id="lensMsg" class="small muted">Choose a physical camera/webcam from the list, then press CONNECT LENS.</p>
     </div>
+    <div id="lensConnectPanel" class="lens-connect-panel">
+      <div class="dual-title">📱 CONNECT TWO PHONE LENSES</div>
+      <p class="small muted">Open each QR code on a separate phone. Phone 1 becomes Lens 1 and Phone 2 becomes Lens 2. You can then switch the LIVE lens from this laptop.</p>
+      <div class="lens-qr-grid">
+        <div class="lens-qr"><h3>📷 LENS 1</h3><div id="qrLens1" class="qr-box"></div><button type="button" onclick="copyLensLink(1)">COPY LENS 1 LINK</button></div>
+        <div class="lens-qr"><h3>📷 LENS 2</h3><div id="qrLens2" class="qr-box"></div><button type="button" onclick="copyLensLink(2)">COPY LENS 2 LINK</button></div>
+      </div>
+      <button type="button" class="primary" onclick="toggleLensScanner()">📷 SCAN LENS QR CODE</button>
+      <div id="lensScanner" class="scanner-box">
+        <video id="scannerVideo" class="scanner-video" autoplay muted playsinline></video>
+        <canvas id="scannerCanvas" class="hidden"></canvas>
+        <p id="scannerMsg" class="small muted">Point the phone/laptop camera at a Lens 1 or Lens 2 QR code.</p>
+        <button type="button" onclick="stopLensScanner()">STOP SCANNER</button>
+      </div>
+      <div id="remoteLens1" class="remote-lens-card"><strong>Lens 1</strong><span class="muted">Waiting for phone…</span><button class="hidden" onclick="useRemoteLens(1)">SWITCH TO LENS 1</button></div>
+      <div id="remoteLens2" class="remote-lens-card"><strong>Lens 2</strong><span class="muted">Waiting for phone…</span><button class="hidden" onclick="useRemoteLens(2)">SWITCH TO LENS 2</button></div>
+      <div class="mobile-camera-tip small muted">💡 On a phone, use Chrome/Safari and allow camera permission. Keep the phone on the Lens page while connected.</div>
+    </div>
     <div id="dualCameraPanel" class="dual-camera-panel hidden">
       <div class="dual-title">📷 DUAL CAMERA — LENS 1 &amp; LENS 2</div>
       <div class="dual-previews">
@@ -122,6 +142,8 @@ const KEY='churchAuctionConfig', ROOM='church-auction-camera-v1'; let sb, channe
 const ICE_SERVERS=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}];
 const pendingIce=new Map();
 let dualStreams=[]; let dualDevices=[]; let dualMode=false; let activeDualIndex=-1;
+let remoteLensPeers=new Map(); let remoteLensStreams=new Map(); let scannerStream=null; let scannerTimer=null;
+const lensRoom=ROOM;
 function cfg(){try{const saved=JSON.parse(localStorage.getItem(KEY)||"{}");return saved.url&&saved.key?saved:{url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}catch{return {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}}
 function save(c){localStorage.setItem(KEY,JSON.stringify(c))}
 function box(){const c=cfg();if(c.url&&c.key)return '';return `<div class="setup card"><h2>First-time setup</h2><input id="sbUrl" placeholder="https://your-project.supabase.co"><input id="sbKey" placeholder="sb_publishable_..."><button onclick="saveCfg()">Save & continue</button></div>`}
@@ -152,13 +174,56 @@ async function init(){
     channel.on('broadcast',{event:'join'},async ({payload})=>{if(!stream)return;await makeOffer(payload.id)})
       .on('broadcast',{event:'answer'},async ({payload})=>{const pc=peers.get(payload.id);if(pc){try{await pc.setRemoteDescription(payload.description);const q=pendingIce.get(payload.id)||[];for(const c of q)await pc.addIceCandidate(c).catch(()=>{});pendingIce.delete(payload.id);}catch(e){console.warn('Remote description failed',e)}}})
       .on('broadcast',{event:'ice'},async ({payload})=>{const pc=peers.get(payload.id);if(!payload.candidate||!pc)return;try{if(pc.remoteDescription)await pc.addIceCandidate(payload.candidate);else{const q=pendingIce.get(payload.id)||[];q.push(payload.candidate);pendingIce.set(payload.id,q);}}catch(e){console.warn('ICE candidate ignored',e);}})
-      .subscribe();
+      .on('broadcast',{event:'lens-offer'},async ({payload})=>{ if(payload.target!=='main-camera') return; await acceptRemoteLensOffer(payload); })
+      .on('broadcast',{event:'lens-ice'},async ({payload})=>{ const pc=remoteLensPeers.get(payload.lens); if(!pc||!payload.candidate)return; try{await pc.addIceCandidate(payload.candidate);}catch(e){console.warn(e);} })
+      .on('broadcast',{event:'lens-close'},({payload})=>{ if(payload.lens) clearRemoteLens(payload.lens); })
+      .subscribe(async status=>{ if(status==='SUBSCRIBED'){ generateLensQRCodes(); if(new URLSearchParams(location.search).has('lens')) setTimeout(startRemoteLensMode,400); } });
   }catch(e){
     console.error('Camera page initialization failed:',e);
     auth.innerHTML='<div class="card center"><h2>⚠️ Camera page error</h2><p class="error">'+String(e.message||e).replace(/[<>]/g,'')+'</p><button onclick="location.reload()">REFRESH PAGE</button></div>';
   }
 }
 window.logout=async()=>{stopCamera();await sb.auth.signOut();location.reload()}
+
+function lensLink(n){ const u=new URL(location.href); u.searchParams.set('lens',String(n)); u.searchParams.delete('scanner'); return u.toString(); }
+function generateLensQRCodes(){
+  [1,2].forEach(n=>{const el=document.getElementById('qrLens'+n); if(!el)return; el.innerHTML=''; if(window.QRCode)new QRCode(el,{text:lensLink(n),width:164,height:164});});
+}
+window.copyLensLink=async n=>{try{await navigator.clipboard.writeText(lensLink(n));alert('Lens '+n+' link copied. Open it on the phone.');}catch(e){prompt('Copy this Lens '+n+' link:',lensLink(n));}};
+async function startRemoteLensMode(){
+  const n=Math.min(2,Math.max(1,Number(new URLSearchParams(location.search).get('lens'))||1));
+  const panel=document.getElementById('lensConnectPanel'); if(panel)panel.innerHTML='<div class="dual-title">📷 LENS '+n+' PHONE</div><p class="small muted">This phone is connected as Lens '+n+'. Keep this page open. The laptop can switch this lens LIVE.</p><video id="remotePhonePreview" class="scanner-video" autoplay muted playsinline></video><p id="remotePhoneMsg" class="lens-status">Connecting…</p>';
+  try{
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('Camera access is not supported.');
+    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:false});
+    const v=document.getElementById('remotePhonePreview'); if(v){v.srcObject=st;await v.play().catch(()=>{});} 
+    const id='lens-'+n+'-'+Math.random().toString(36).slice(2,8);
+    const pc=new RTCPeerConnection({iceServers:ICE_SERVERS}); st.getTracks().forEach(t=>pc.addTrack(t,st));
+    pc.onicecandidate=e=>{if(e.candidate)channel?.send({type:'broadcast',event:'lens-ice',payload:{lens:n,candidate:e.candidate}})};
+    const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
+    channel.on('broadcast',{event:'lens-answer'},async({payload})=>{if(payload.id!==id)return;try{await pc.setRemoteDescription(payload.answer)}catch(e){console.warn(e)}});
+    await channel.send({type:'broadcast',event:'lens-offer',payload:{lens:n,id,offer:pc.localDescription,target:'main-camera'}});
+    const msg=document.getElementById('remotePhoneMsg');if(msg)msg.textContent='🟢 Lens '+n+' connected — waiting for LIVE selection.';
+    window.addEventListener('beforeunload',()=>{st.getTracks().forEach(t=>t.stop());channel?.send({type:'broadcast',event:'lens-close',payload:{lens:n}})});
+  }catch(e){const msg=document.getElementById('remotePhoneMsg');if(msg)msg.textContent='Camera error: '+(e.message||e.name);}
+}
+async function acceptRemoteLensOffer(payload){
+  const lens=Number(payload.lens); if(![1,2].includes(lens))return;
+  if(remoteLensPeers.has(lens)) remoteLensPeers.get(lens).close();
+  const pc=new RTCPeerConnection({iceServers:ICE_SERVERS}); remoteLensPeers.set(lens,pc);
+  pc.onicecandidate=e=>{if(e.candidate)channel?.send({type:'broadcast',event:'lens-ice',payload:{lens,candidate:e.candidate}})};
+  pc.ontrack=e=>{const st=e.streams[0];remoteLensStreams.set(lens,st); updateRemoteLensUI(lens,true); if(!stream){useRemoteLens(lens);} };
+  await pc.setRemoteDescription(payload.offer); const answer=await pc.createAnswer(); await pc.setLocalDescription(answer);
+  await channel.send({type:'broadcast',event:'lens-answer',payload:{id:payload.id,answer:pc.localDescription,lens}});
+  updateRemoteLensUI(lens,true);
+}
+function updateRemoteLensUI(lens,on){const el=document.getElementById('remoteLens'+lens);if(!el)return;const span=el.querySelector('span');const b=el.querySelector('button');if(span){span.textContent=on?'🟢 Connected':'Waiting for phone…';span.className=on?'online':'';}if(b)b.classList.toggle('hidden',!on);}
+window.useRemoteLens=async lens=>{const st=remoteLensStreams.get(Number(lens));if(!st)return;const track=st.getVideoTracks()[0];if(!track)return;stream=st;activeDualIndex=-1;const preview=document.getElementById('preview');if(preview){preview.srcObject=st;await preview.play().catch(()=>{});}for(const pc of peers.values()){const sender=pc.getSenders().find(x=>x.track?.kind==='video');if(sender)await sender.replaceTrack(track).catch(()=>{});}await refreshCameraControlsForTrack(track);setRotation(cameraRotation,false);broadcastCameraSettings();const m=document.getElementById('camMsg');if(m)m.textContent='🔴 LIVE — REMOTE LENS '+lens;};
+function clearRemoteLens(lens){const pc=remoteLensPeers.get(lens);if(pc)pc.close();remoteLensPeers.delete(lens);remoteLensStreams.delete(lens);updateRemoteLensUI(lens,false);}
+window.toggleLensScanner=async()=>{const box=document.getElementById('lensScanner');if(box.classList.contains('show')){stopLensScanner();return;}box.classList.add('show');try{scannerStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});const v=document.getElementById('scannerVideo');v.srcObject=scannerStream;await v.play();scannerLoop();}catch(e){document.getElementById('scannerMsg').textContent='Scanner camera error: '+(e.message||e.name);}};
+window.stopLensScanner=()=>{if(scannerTimer)cancelAnimationFrame(scannerTimer);scannerTimer=null;if(scannerStream)scannerStream.getTracks().forEach(t=>t.stop());scannerStream=null;document.getElementById('lensScanner')?.classList.remove('show');};
+function scannerLoop(){const v=document.getElementById('scannerVideo'),c=document.getElementById('scannerCanvas');if(!v||!c)return;const w=v.videoWidth,h=v.videoHeight;if(!w||!h){scannerTimer=requestAnimationFrame(scannerLoop);return;}c.width=w;c.height=h;const x=c.getContext('2d');x.drawImage(v,0,0,w,h);let value=null;if('BarcodeDetector' in window){/* browser detector handled below asynchronously */}if(window.jsQR){const code=jsQR(x.getImageData(0,0,w,h).data,w,h);if(code)value=code.data;}if(value){try{const u=new URL(value);const n=Number(u.searchParams.get('lens'));if([1,2].includes(n)){document.getElementById('scannerMsg').textContent='✅ Lens '+n+' QR detected. Opening lens connection…';stopLensScanner();location.href=value;return;}}catch(_){} }scannerTimer=requestAnimationFrame(scannerLoop);}
+
 function setRotation(rotation, broadcast=true){
   cameraRotation=((Number(rotation)%360)+360)%360;
   const preview=document.getElementById('preview');
