@@ -110,12 +110,12 @@ async function startCamera(){
     // Failure here must NOT stop the camera.
     try{
       if(track && track.applyConstraints){
-        await track.applyConstraints({width:{ideal:3840},height:{ideal:2160},frameRate:{ideal:30}});
+        await track.applyConstraints({width:{ideal:1920,max:1920},height:{ideal:1080,max:1080},frameRate:{ideal:30,max:30}});
       }
     }catch(e){ console.warn('High-resolution request ignored:',e); }
 
     const settings=track && track.getSettings ? track.getSettings() : {};
-    msg.textContent='LIVE — '+(settings.width||'?')+'×'+(settings.height||'?')+' — Camera connected successfully.';
+    msg.textContent='LIVE — '+(settings.width||'?')+'×'+(settings.height||'?')+' @ '+(settings.frameRate||'?')+' FPS — Camera connected successfully.';
     startBtn.classList.add('hidden');
     stopBtn.classList.remove('hidden');
   }catch(e){
