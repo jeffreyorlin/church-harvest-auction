@@ -4,8 +4,9 @@
 <title>Church Auction Bidding</title><link rel="stylesheet" href="style.css"></head>
 <body>
 <div class="wrap">
+<div class="church-brand tv-brand-bar"><span class="brand-cross">✝️</span> CSI MEEETPAR YESU ALAYAM</div>
 <div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD OUT</div><div id="soldEmail" class="sold-email"></div><div id="soldSub" class="sold-sub">This item has been sold successfully</div></div></div>
-<h1>⛪ Live Church Auction</h1>
+<h1 class="auction-pulse">⛪ Live Church Auction</h1>
 <div id="setupArea"></div>
 <div id="app" class="hidden">
   <div class="card center">
@@ -15,8 +16,8 @@
     <span id="status" class="status">WAITING</span>
   </div>
 
-  <div class="card">
-    <h2>📹 LIVE PRODUCT</h2>
+  <div class="card bid-live-card">
+    <h2 class="live-glow">📹 LIVE PRODUCT • CSI MEEETPAR YESU ALAYAM</h2>
     <video id="cameraVideo" class="cameraLive" autoplay playsinline controls></video>
     <div id="cameraStatus" class="cameraStatus muted">Waiting for church camera…</div>
   </div>
