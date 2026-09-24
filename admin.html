@@ -38,7 +38,7 @@
 
   <div class="card" id="underageCard">
     <h2>🚨 Under-18 Bidding Attempts</h2>
-    <div id="underageNotice" class="admin-alert hidden"></div><button id="clearAgeNoticeBtn" class="danger hidden" onclick="clearAgeLimitNotification()">CLEAR AGE-LIMIT NOTIFICATION</button>
+    <div id="underageNotice" class="admin-alert hidden"></div><div class="button-row"><button id="clearAgeNoticeBtn" class="danger hidden" onclick="clearAgeLimitNotification()">CLEAR AGE-LIMIT NOTIFICATION</button><button class="danger" onclick="deleteAllUnderageAttempts()">DELETE ALL UNDER-18 ATTEMPTS</button></div>
     <div id="underageHistory" class="history"></div>
   </div>
   <div class="card">
@@ -174,7 +174,7 @@ async function clearRecentBidHistory(){
 async function offlineBid(){
  const a=await getState();const name=document.getElementById("offlineName").value.trim();const amount=Number(document.getElementById("offlineAmount").value);
  if(!name||!amount)return alert("Enter bidder name and amount.");
- const {data,error}=await sb.rpc("place_bid",{p_item_number:a.item_number,p_bidder_name:name,p_amount:amount,p_source:"offline"});
+ const {data,error}=await sb.rpc("place_bid",{p_item_number:a.item_number,p_bidder_name:name,p_amount:amount,p_source:"offline",p_bidder_age:null,p_bidder_address:""});
  if(error)alert(error.message);else if(!data.ok)alert(data.message);else{document.getElementById("offlineAmount").value="";refresh()}
 }
 async function loadUnderageAttempts(){
@@ -184,7 +184,30 @@ async function loadUnderageAttempts(){
  if(!data||!data.length){box.innerHTML='<div class="muted">No under-18 attempts recorded.</div>';notice.classList.add("hidden");return;}
  const latest=data[0];
  notice.textContent=`⚠️ Under-18 bidding attempt detected: ${latest.name} (${latest.age})`;notice.classList.remove("hidden");
- box.innerHTML=data.map(x=>`<div><b>${esc(x.name)}</b> — age ${esc(x.age)}<br><span class="muted">${esc(x.address||"")} • ${new Date(x.attempted_at).toLocaleString("en-IN")}</span></div>`).join("");
+ box.innerHTML=data.map(x=>`<div class="history-row"><div><b>${esc(x.name)}</b> — age ${esc(x.age)}<br><span class="muted">${esc(x.address||"")} • ${new Date(x.attempted_at).toLocaleString("en-IN")}</span></div><button class="danger small-btn" onclick="deleteUnderageAttempt(${Number(x.id)})">DELETE</button></div>`).join("");
+}
+
+function clearAgeLimitNotification(){
+ const notice=document.getElementById("underageNotice");
+ if(notice) notice.classList.add("hidden");
+ const btn=document.getElementById("clearAgeNoticeBtn");
+ if(btn) btn.classList.add("hidden");
+}
+async function deleteUnderageAttempt(id){
+ if(!confirm("Delete this under-18 bidding attempt?")) return;
+ const {data,error}=await sb.rpc("delete_underage_bidding_attempt",{p_id:id});
+ if(error){showMsg("Unable to delete under-18 attempt: "+error.message);return;}
+ if(!data || !data.ok){showMsg((data&&data.message)||"Unable to delete under-18 attempt.");return;}
+ await loadUnderageAttempts();
+ showMsg("Under-18 attempt deleted.",true);
+}
+async function deleteAllUnderageAttempts(){
+ if(!confirm("Delete ALL recorded under-18 bidding attempts? This cannot be undone.")) return;
+ const {data,error}=await sb.rpc("delete_all_underage_bidding_attempts");
+ if(error){showMsg("Unable to delete under-18 attempts: "+error.message);return;}
+ if(!data || !data.ok){showMsg((data&&data.message)||"Unable to delete under-18 attempts.");return;}
+ await loadUnderageAttempts();
+ showMsg("All under-18 bidding attempts deleted.",true);
 }
 async function loadBids(){
  if(!sb)return;

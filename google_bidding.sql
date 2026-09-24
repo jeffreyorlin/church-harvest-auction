@@ -120,15 +120,19 @@ $$;
 revoke execute on function public.log_underage_bidding_attempt(text,text,integer) from public;
 grant execute on function public.log_underage_bidding_attempt(text,text,integer) to anon, authenticated;
 
--- Replace bidding RPC with age/address enforcement and storage.
+-- Resolve overloaded place_bid functions before creating the age/address version.
+drop function if exists public.place_bid(integer,text,numeric,text);
+drop function if exists public.place_bid(integer,text,numeric,text,integer,text);
+
+
 drop function if exists public.place_bid(integer,text,numeric,text);
 create or replace function public.place_bid(
   p_item_number integer,
   p_bidder_name text,
   p_amount numeric,
-  p_source text default 'online',
-  p_bidder_age integer default null,
-  p_bidder_address text default ''
+  p_source text,
+  p_bidder_age integer,
+  p_bidder_address text
 )
 returns jsonb
 language plpgsql
@@ -173,3 +177,37 @@ $$;
 revoke execute on function public.place_bid(integer,text,numeric,text,integer,text) from public;
 revoke execute on function public.place_bid(integer,text,numeric,text,integer,text) from anon;
 grant execute on function public.place_bid(integer,text,numeric,text,integer,text) to authenticated;
+
+
+-- Admin cleanup for under-18 attempt notifications.
+drop function if exists public.delete_underage_bidding_attempt(bigint);
+create or replace function public.delete_underage_bidding_attempt(p_id bigint)
+returns jsonb
+language plpgsql
+security definer
+set search_path=public
+as $$
+begin
+  if auth.uid() is null then return jsonb_build_object('ok',false,'message','Admin login required.'); end if;
+  delete from public.underage_bidding_attempts where id=p_id;
+  return jsonb_build_object('ok',true,'message','Under-18 attempt deleted.');
+end;
+$$;
+revoke execute on function public.delete_underage_bidding_attempt(bigint) from public, anon;
+grant execute on function public.delete_underage_bidding_attempt(bigint) to authenticated;
+
+drop function if exists public.delete_all_underage_bidding_attempts();
+create or replace function public.delete_all_underage_bidding_attempts()
+returns jsonb
+language plpgsql
+security definer
+set search_path=public
+as $$
+begin
+  if auth.uid() is null then return jsonb_build_object('ok',false,'message','Admin login required.'); end if;
+  delete from public.underage_bidding_attempts;
+  return jsonb_build_object('ok',true,'message','All under-18 attempts deleted.');
+end;
+$$;
+revoke execute on function public.delete_all_underage_bidding_attempts() from public, anon;
+grant execute on function public.delete_all_underage_bidding_attempts() to authenticated;

@@ -34,7 +34,7 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 .tv-highest{font-size:clamp(25px,3vw,50px);font-weight:700;margin:2vh 0}
 .tv-camera-card{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .tv-camera-title{font-size:clamp(24px,3vw,46px);font-weight:900;margin-bottom:1vh}
-.tv-camera-video{width:100%;height:calc(100% - 56px);max-height:none;object-fit:contain;background:#000;border-radius:12px;transform:scale(1.01);}
+.tv-camera-video{width:100%;height:calc(100% - 70px);max-height:none;object-fit:contain;background:#000;border-radius:12px}
 .tv-camera-card .cameraStatus{font-size:clamp(16px,1.6vw,26px);margin-top:8px}
 @media (orientation:portrait){
   .tv-topbar{height:auto;min-height:64px;flex-wrap:wrap;gap:6px;padding:8px}
@@ -89,10 +89,10 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 .tv-highest{animation:softFloat 3.5s ease-in-out infinite}
 .tv-camera-card{animation:cameraIn .7s ease-out}
 .tv-camera-video{box-shadow:0 0 0 2px #ffd54a44,0 0 40px #000}
-.tv-mini-camera{position:absolute;right:1.5vw;bottom:1.5vh;width:min(24vw,400px);height:min(18vh,190px);background:#080b12;border:2px solid #ffd54a;border-radius:18px;padding:7px;box-shadow:0 0 28px #000,0 0 20px #ffd54a55;overflow:hidden;animation:miniFloat 4s ease-in-out infinite}
-.tv-mini-camera-head{height:30px;display:flex;justify-content:space-between;align-items:center;font-size:clamp(10px,1vw,16px);font-weight:900;padding:0 8px;color:#fff}
+.tv-mini-camera{position:absolute;right:2vw;bottom:2vh;width:min(48vw,820px);height:min(48vh,520px);background:#080b12;border:2px solid #ffd54a;border-radius:18px;padding:7px;box-shadow:0 0 28px #000,0 0 20px #ffd54a55;overflow:hidden;animation:miniFloat 4s ease-in-out infinite}
+.tv-mini-camera-head{height:44px;display:flex;justify-content:space-between;align-items:center;font-size:clamp(14px,1.4vw,24px);font-weight:900;padding:0 8px;color:#fff}
 .tv-mini-camera-head span:last-child{color:#78e08f;animation:liveBlink 1.2s infinite}
-.tv-mini-camera-video{width:100%;height:calc(100% - 30px);object-fit:cover;border-radius:12px;background:#000}
+.tv-mini-camera-video{width:100%;height:calc(100% - 44px);object-fit:contain;border-radius:12px;background:#000}
 @keyframes tvGlow{from{transform:scale(1);opacity:.16}to{transform:scale(1.18);opacity:.28}}
 @keyframes titleFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 @keyframes auctionIn{from{opacity:0;transform:scale(.96) translateY(18px)}to{opacity:1;transform:none}}
@@ -102,7 +102,7 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 @keyframes softFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
 @keyframes miniFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
 @keyframes liveBlink{0%,100%{opacity:1}50%{opacity:.3}}
-@media (max-width:900px){.tv-mini-camera{width:38vw;height:22vh;right:1.5vw;bottom:1.5vh}.tv-bid{font-size:clamp(70px,12vw,150px)}}
+@media (max-width:900px){.tv-mini-camera{width:58vw;height:36vh;right:1vw;bottom:1vh}.tv-bid{font-size:clamp(70px,12vw,150px)}}
 
 /* CSI Meetpar Yesu Alayam branding + animated live display */
 .church-brand{font-weight:900;letter-spacing:1.5px;text-align:center;text-transform:uppercase;line-height:1.15;}
@@ -117,9 +117,11 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 @keyframes liveGlow{0%,100%{opacity:.72}50%{opacity:1;text-shadow:0 0 12px currentColor}}
 .bid-live-card{animation:cardEntrance .7s ease-out both;}
 @keyframes cardEntrance{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+.button-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0}.history-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(128,128,128,.2)}.small-btn{padding:6px 10px;font-size:12px}
 
-/* Larger TV live product display */
-#cameraSlide{padding:0.5vh 1vw;}
-#cameraSlide .tv-camera-card{width:100%;height:100%;}
-#cameraSlide .tv-camera-title{font-size:clamp(18px,2.2vw,34px);padding:6px 0;font-weight:900;}
-@media (max-width:900px){#cameraSlide .tv-camera-title{font-size:clamp(16px,3.5vw,28px)}.tv-mini-camera{width:30vw;height:18vh;}}
+/* Enlarged live product frame for TV */
+.tv-slide#auctionSlide{padding:2vh 2vw;}
+.tv-auction-card{padding-right:min(50vw,850px);}
+.tv-camera-card{padding:0 1vw;}
+.tv-camera-video{min-height:0;object-fit:contain;}
+@media (min-width:1400px){.tv-camera-video{width:96vw;height:calc(100% - 75px);}.tv-mini-camera{width:min(52vw,950px);height:min(52vh,600px);}}
