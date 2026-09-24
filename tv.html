@@ -101,17 +101,20 @@ async function refresh(){const {data,error}=await sb.from("auction_state").selec
  if(emailEl) emailEl.textContent=sold?`${email} (${winner}, ${address})`:"";
  document.getElementById("soldSub").textContent=sold?`SOLD OUT TO ${winner} • ${money(data.current_bid)}`:"";
 }
+const CAMERA_ICE_SERVERS=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]; let cameraPendingIce=[];
 async function setupCameraViewer(){
  camChannel=sb.channel("church-auction-camera-v1",{config:{broadcast:{ack:true}}});
  camChannel.on("broadcast",{event:"offer"},async ({payload})=>{
    if(payload.id!==viewerId)return;
    if(camPeer)camPeer.close();
-   camPeer=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});
+   camPeer=new RTCPeerConnection({iceServers:CAMERA_ICE_SERVERS});
+   cameraPendingIce=[];
+   camPeer.onconnectionstatechange=()=>{if(camPeer.connectionState==='failed'){document.getElementById('cameraStatus').textContent='⚠️ LIVE CAMERA CONNECTION LOST — reconnecting...'; setTimeout(()=>setupCameraViewer(),1500);}};
    camPeer.ontrack=e=>{const stream=e.streams[0];document.getElementById('cameraVideo').srcObject=stream;const mini=document.getElementById('miniCameraVideo');if(mini)mini.srcObject=stream;document.getElementById('cameraStatus').textContent='🔴 LIVE PRODUCT CAMERA';const miniStatus=document.getElementById('miniCameraStatus');if(miniStatus)miniStatus.textContent='● LIVE';};
    camPeer.onicecandidate=e=>{if(e.candidate)camChannel.send({type:'broadcast',event:'ice',payload:{id:viewerId,candidate:e.candidate}})};
-   await camPeer.setRemoteDescription(payload.description);const ans=await camPeer.createAnswer();await camPeer.setLocalDescription(ans);
+   await camPeer.setRemoteDescription(payload.description); for(const c of cameraPendingIce){await camPeer.addIceCandidate(c).catch(()=>{});} cameraPendingIce=[]; const ans=await camPeer.createAnswer();await camPeer.setLocalDescription(ans);
    await camChannel.send({type:'broadcast',event:'answer',payload:{id:viewerId,description:camPeer.localDescription}});
- }).on('broadcast',{event:'ice'},async ({payload})=>{if(payload.id!==viewerId||!camPeer||!payload.candidate)return;try{await camPeer.addIceCandidate(payload.candidate)}catch(e){}}).subscribe(async status=>{if(status==='SUBSCRIBED'){await camChannel.send({type:'broadcast',event:'join',payload:{id:viewerId}});}});
+ }).on('broadcast',{event:'ice'},async ({payload})=>{if(payload.id!==viewerId||!payload.candidate)return; if(!camPeer)return; try{if(camPeer.remoteDescription)await camPeer.addIceCandidate(payload.candidate);else cameraPendingIce.push(payload.candidate);}catch(e){console.warn('ICE candidate ignored',e);}}).subscribe(async status=>{if(status==='SUBSCRIBED'){await camChannel.send({type:'broadcast',event:'join',payload:{id:viewerId}});}});
 }
 init();
 </script>

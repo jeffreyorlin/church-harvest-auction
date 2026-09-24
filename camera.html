@@ -55,13 +55,15 @@ document.body.classList.add('camera-locked');
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const KEY='churchAuctionConfig', ROOM='church-auction-camera-v1'; let sb, channel, stream=null, peers=new Map(); let cameraUser=null;
+const ICE_SERVERS=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}];
+const pendingIce=new Map();
 function cfg(){try{const saved=JSON.parse(localStorage.getItem(KEY)||"{}");return saved.url&&saved.key?saved:{url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}catch{return {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}}
 function save(c){localStorage.setItem(KEY,JSON.stringify(c))}
 function box(){const c=cfg();if(c.url&&c.key)return '';return `<div class="setup card"><h2>First-time setup</h2><input id="sbUrl" placeholder="https://your-project.supabase.co"><input id="sbKey" placeholder="sb_publishable_..."><button onclick="saveCfg()">Save & continue</button></div>`}
 window.saveCfg=()=>{const url=document.getElementById('sbUrl').value.trim().replace(/\/$/,'');const key=document.getElementById('sbKey').value.trim();if(!url||!key)return alert('Enter both values.');save({url,key});location.reload()}
 function authBox(){return `<div class="setup card"><h2>Camera admin login</h2><p class="muted">Sign in with the same Supabase admin account used for the auction.</p><input id="email" type="email" placeholder="Admin email"><input id="pass" type="password" placeholder="Password"><button class="primary" onclick="login()">LOGIN</button><p id="loginMsg" class="small error"></p></div>`}
 window.login=async()=>{const msg=document.getElementById('loginMsg');const {error}=await sb.auth.signInWithPassword({email:document.getElementById('email').value.trim(),password:document.getElementById('pass').value});if(error)msg.textContent=error.message;else location.reload()}
-async function init(){document.getElementById('setupArea').innerHTML=box();const c=cfg();if(!c.url||!c.key)return;sb=supabase.createClient(c.url,c.key);const {data:{session}}=await sb.auth.getSession();if(!session){document.getElementById('authArea').innerHTML=authBox();return;}cameraUser=session.user;document.getElementById('authArea').innerHTML='<div class="card"><button onclick="logout()">LOG OUT</button></div>';document.getElementById('app').classList.remove('hidden');channel=sb.channel(ROOM,{config:{broadcast:{ack:true}}});channel.on('broadcast',{event:'join'},async ({payload})=>{if(!stream)return;await makeOffer(payload.id)}).on('broadcast',{event:'answer'},async ({payload})=>{const pc=peers.get(payload.id);if(pc)await pc.setRemoteDescription(payload.description)}).on('broadcast',{event:'ice'},async ({payload})=>{const pc=peers.get(payload.id);if(pc&&payload.candidate)try{await pc.addIceCandidate(payload.candidate)}catch(e){}}).subscribe()}
+async function init(){document.getElementById('setupArea').innerHTML=box();const c=cfg();if(!c.url||!c.key)return;sb=supabase.createClient(c.url,c.key);const {data:{session}}=await sb.auth.getSession();if(!session){document.getElementById('authArea').innerHTML=authBox();return;}cameraUser=session.user;document.getElementById('authArea').innerHTML='<div class="card"><button onclick="logout()">LOG OUT</button></div>';document.getElementById('app').classList.remove('hidden');channel=sb.channel(ROOM,{config:{broadcast:{ack:true}}});channel.on('broadcast',{event:'join'},async ({payload})=>{if(!stream)return;await makeOffer(payload.id)}).on('broadcast',{event:'answer'},async ({payload})=>{const pc=peers.get(payload.id);if(pc){try{await pc.setRemoteDescription(payload.description);const q=pendingIce.get(payload.id)||[];for(const c of q)await pc.addIceCandidate(c).catch(()=>{});pendingIce.delete(payload.id);}catch(e){console.warn('Remote description failed',e)}}}).on('broadcast',{event:'ice'},async ({payload})=>{const pc=peers.get(payload.id); if(!payload.candidate)return; if(!pc){return;} try{if(pc.remoteDescription)await pc.addIceCandidate(payload.candidate); else{const q=pendingIce.get(payload.id)||[];q.push(payload.candidate);pendingIce.set(payload.id,q);}}catch(e){console.warn('ICE candidate ignored',e);}}).subscribe()}
 window.logout=async()=>{stopCamera();await sb.auth.signOut();location.reload()}
 async function startCamera(){
   const msg=document.getElementById('camMsg');
@@ -121,7 +123,18 @@ async function startCamera(){
     msg.textContent='Camera error: '+(e.message||e.name||String(e));
   }
 }
-async function makeOffer(id){if(peers.has(id))peers.get(id).close();const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]});peers.set(id,pc);stream.getTracks().forEach(t=>{const sender=pc.addTrack(t,stream); if(sender&&sender.getParameters){const params=sender.getParameters(); params.encodings=params.encodings||[{}]; params.encodings[0].maxBitrate=18000000; params.encodings[0].maxFramerate=30; sender.setParameters(params).catch(()=>{});}});pc.onicecandidate=e=>{if(e.candidate)channel.send({type:'broadcast',event:'ice',payload:{id,candidate:e.candidate}})};const offer=await pc.createOffer();await pc.setLocalDescription(offer);await channel.send({type:'broadcast',event:'offer',payload:{id,description:pc.localDescription}})}
+async function makeOffer(id){
+  if(!stream)return;
+  if(peers.has(id))peers.get(id).close();
+  const pc=new RTCPeerConnection({iceServers:ICE_SERVERS});
+  peers.set(id,pc); pendingIce.set(id,[]);
+  stream.getTracks().forEach(t=>{const sender=pc.addTrack(t,stream); if(sender&&sender.getParameters){const params=sender.getParameters(); params.encodings=params.encodings||[{}]; params.encodings[0].maxBitrate=6000000; params.encodings[0].maxFramerate=30; sender.setParameters(params).catch(()=>{});}});
+  pc.onicecandidate=e=>{if(e.candidate)channel.send({type:'broadcast',event:'ice',payload:{id,candidate:e.candidate}})};
+  pc.onconnectionstatechange=()=>{ if(pc.connectionState==='failed'||pc.connectionState==='closed'){ peers.delete(id); pendingIce.delete(id); } };
+  const offer=await pc.createOffer(); await pc.setLocalDescription(offer);
+  await channel.send({type:'broadcast',event:'offer',payload:{id,description:pc.localDescription}});
+}
+
 window.stopCamera=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;for(const pc of peers.values())pc.close();peers.clear();document.getElementById('preview').srcObject=null;document.getElementById('startBtn').classList.remove('hidden');document.getElementById('stopBtn').classList.add('hidden');document.getElementById('camMsg').textContent='Camera stopped.'}
 init();
 </script></body></html>
