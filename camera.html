@@ -138,7 +138,7 @@ async function startCamera(){
     msg.textContent='Camera error: '+(e.message||e.name||String(e));
   }
 }
-\nasync function switchCamera(){
+async function switchCamera(){
   if(!stream){ return; }
   const msg=document.getElementById('camMsg');
   const switchBtn=document.getElementById('switchBtn');
