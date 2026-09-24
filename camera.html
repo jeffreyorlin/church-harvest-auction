@@ -7,6 +7,8 @@
 .camera-controls{margin:14px auto 0;max-width:900px;padding:14px;border:1px solid #33415f;border-radius:14px;background:#0d1728;text-align:left}
 .camera-control-row,.camera-rotation-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}
 .camera-control-row label,.camera-rotation-row>span{font-weight:900;white-space:nowrap}
+.dual-camera-panel{margin:14px auto 0;max-width:900px;padding:14px;border:1px solid #33415f;border-radius:14px;background:#091321;text-align:left}
+.dual-title{font-weight:900;font-size:18px;margin-bottom:10px}.dual-previews{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.dual-preview{background:#111c2d;border-radius:12px;padding:8px}.dual-preview video{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#000}.dual-preview button{width:100%;margin-top:8px}.dual-preview.active{outline:2px solid #ffd54a}.dual-preview.active button{background:#ffd54a;color:#111}@media(max-width:700px){.dual-previews{grid-template-columns:1fr}}
 .camera-control-row input[type=range]{flex:1;min-width:180px}
 #zoomNumber{width:82px;padding:9px;border-radius:8px;border:1px solid #50607a;background:#101a2b;color:#fff;font-weight:800}
 #zoomActual{min-width:48px;font-weight:900;color:#ffd54a}
@@ -59,7 +61,15 @@ document.body.classList.add('camera-locked');
   <div class="card center">
     <h2>Live Product Camera</h2>
     <video id="preview" autoplay muted playsinline></video>
-    <div><button class="primary" id="startBtn" onclick="startCamera()">START CAMERA</button><button id="switchBtn" onclick="switchCamera()" class="hidden">🔄 SWITCH FRONT / BACK</button><button id="stopBtn" onclick="stopCamera()" class="hidden">STOP CAMERA</button></div>
+    <div><button class="primary" id="startBtn" onclick="startCamera()">START CAMERA</button><button id="dualBtn" onclick="toggleDualCamera()" class="hidden">📷 DUAL CAMERA</button><button id="switchBtn" onclick="switchCamera()" class="hidden">🔄 SWITCH CAMERA</button><button id="stopBtn" onclick="stopCamera()" class="hidden">STOP CAMERA</button></div>
+    <div id="dualCameraPanel" class="dual-camera-panel hidden">
+      <div class="dual-title">📷 DUAL CAMERA — LENS 1 &amp; LENS 2</div>
+      <div class="dual-previews">
+        <div class="dual-preview"><video id="dualPreview1" autoplay muted playsinline></video><button type="button" id="useCamera1Btn" onclick="useDualCamera(0)">🔄 SWITCH TO LENS 1</button></div>
+        <div class="dual-preview"><video id="dualPreview2" autoplay muted playsinline></video><button type="button" id="useCamera2Btn" onclick="useDualCamera(1)">🔄 SWITCH TO LENS 2</button></div>
+      </div>
+      <p id="dualMsg" class="small muted">Enable Dual Camera to detect the available cameras.</p>
+    </div>
     <div id="cameraControls" class="camera-controls hidden">
       <div class="camera-control-row">
         <label for="zoomRange">🔍 ZOOM</label>
@@ -102,6 +112,7 @@ async function loadSupabaseClient(){
 const KEY='churchAuctionConfig', ROOM='church-auction-camera-v1'; let sb, channel, stream=null, peers=new Map(); let cameraUser=null; let cameraZoom=1; let cameraRotation=0;
 const ICE_SERVERS=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}];
 const pendingIce=new Map();
+let dualStreams=[]; let dualDevices=[]; let dualMode=false; let activeDualIndex=-1;
 function cfg(){try{const saved=JSON.parse(localStorage.getItem(KEY)||"{}");return saved.url&&saved.key?saved:{url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}catch{return {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};}}
 function save(c){localStorage.setItem(KEY,JSON.stringify(c))}
 function box(){const c=cfg();if(c.url&&c.key)return '';return `<div class="setup card"><h2>First-time setup</h2><input id="sbUrl" placeholder="https://your-project.supabase.co"><input id="sbKey" placeholder="sb_publishable_..."><button onclick="saveCfg()">Save & continue</button></div>`}
@@ -192,6 +203,114 @@ function initCameraControls(){
   if(controls) controls.classList.remove('hidden');
 }
 initCameraControls();
+async function toggleDualCamera(){
+  const panel=document.getElementById('dualCameraPanel');
+  const btn=document.getElementById('dualBtn');
+  const msg=document.getElementById('dualMsg');
+  if(!panel)return;
+  if(dualMode){
+    stopDualCameras();
+    panel.classList.add('hidden');
+    dualMode=false;
+    if(btn)btn.textContent='📷 DUAL CAMERA';
+    return;
+  }
+  if(!stream){
+    if(msg)msg.textContent='Start the main camera first, then enable Dual Camera.';
+    panel.classList.remove('hidden');
+    return;
+  }
+  dualMode=true;
+  panel.classList.remove('hidden');
+  if(btn)btn.textContent='✖ CLOSE DUAL CAMERA';
+  if(msg)msg.textContent='Detecting available cameras…';
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    dualDevices=devices.filter(d=>d.kind==='videoinput');
+    if(dualDevices.length<2){
+      // Device labels become available after camera permission. Re-enumerate once.
+      const permissionStream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+      permissionStream.getTracks().forEach(t=>t.stop());
+      dualDevices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+    }
+    if(dualDevices.length<2)throw new Error('Two cameras were not detected on this device.');
+    const targets=dualDevices.slice(0,2);
+    await openDualPreview(0,targets[0].deviceId);
+    await openDualPreview(1,targets[1].deviceId);
+    if(msg)msg.textContent='Two cameras are ready. Use the buttons below to make either camera the LIVE camera.';
+  }catch(e){
+    console.error('Dual camera setup failed:',e);
+    if(msg)msg.textContent='Dual Camera: '+(e.message||e.name||String(e));
+  }
+}
+async function openDualPreview(index,deviceId){
+  if(dualStreams[index]){dualStreams[index].getTracks().forEach(t=>t.stop());dualStreams[index]=null;}
+  const st=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:deviceId},width:{ideal:1280},height:{ideal:720}},audio:false});
+  dualStreams[index]=st;
+  const v=document.getElementById(index===0?'dualPreview1':'dualPreview2');
+  if(v){v.srcObject=st;try{await v.play();}catch(_){} }
+  updateDualActiveUI();
+}
+async function useDualCamera(index){
+  const st=dualStreams[index];
+  if(!st){
+    const msg=document.getElementById('dualMsg');
+    if(msg)msg.textContent='Lens '+(index+1)+' is not connected.';
+    return;
+  }
+  const track=st.getVideoTracks()[0];
+  if(!track)return;
+
+  // Keep BOTH physical camera streams connected. Only the selected lens is
+  // sent to the viewers. This makes switching between Lens 1 and Lens 2
+  // immediate instead of reopening the camera every time.
+  stream=st;
+  activeDualIndex=index;
+
+  const preview=document.getElementById('preview');
+  if(preview){preview.srcObject=st;try{await preview.play();}catch(_){} }
+
+  for(const [id,pc] of peers){
+    try{
+      const sender=pc.getSenders().find(x=>x.track&&x.track.kind==='video');
+      if(sender)await sender.replaceTrack(track);
+    }catch(e){console.warn('Could not switch live dual camera',id,e);}
+  }
+
+  await refreshCameraControlsForTrack(track);
+  setRotation(cameraRotation,false);
+  broadcastCameraSettings();
+  updateDualActiveUI();
+
+  const msg=document.getElementById('dualMsg');
+  if(msg)msg.textContent='🔴 LIVE: LENS '+(index+1)+' — press the other switch button to change instantly.';
+}
+function updateDualActiveUI(){
+  [0,1].forEach(i=>{const box=document.querySelector('.dual-preview:nth-child('+(i+1)+')');if(box)box.classList.toggle('active',i===activeDualIndex);});
+}
+function stopDualCameras(){
+  dualStreams.forEach((st,i)=>{
+    if(st && i!==activeDualIndex && st!==stream)st.getTracks().forEach(t=>t.stop());
+  });
+  // Keep the currently LIVE lens running as the normal single-camera stream.
+  if(stream && stream.getTracks){}
+  dualStreams=[];dualDevices=[];activeDualIndex=-1;
+  ['dualPreview1','dualPreview2'].forEach(id=>{const v=document.getElementById(id);if(v)v.srcObject=null;});
+}
+async function refreshCameraControlsForTrack(track){
+  const caps=track&&track.getCapabilities?track.getCapabilities():{};
+  const range=document.getElementById('zoomRange'),num=document.getElementById('zoomNumber');
+  if(caps.zoom){
+    const zmin=Number(caps.zoom.min??1),zmax=Math.min(4,Number(caps.zoom.max??4));
+    if(range){range.min=zmin;range.max=zmax;range.disabled=false;}
+    if(num){num.min=zmin;num.max=zmax;num.disabled=false;}
+    cameraZoom=Math.min(zmax,Math.max(zmin,cameraZoom));
+    await applyZoom(cameraZoom,false);
+  }else{
+    if(range)range.disabled=true;if(num)num.disabled=true;cameraZoom=1;updateZoomUI(1);
+  }
+}
+
 async function startCamera(){
   const msg=document.getElementById('camMsg');
   const preview=document.getElementById('preview');
@@ -274,6 +393,7 @@ async function startCamera(){
     startBtn.classList.add('hidden');
     stopBtn.classList.remove('hidden');
     switchBtn.classList.remove('hidden');
+    document.getElementById('dualBtn')?.classList.remove('hidden');
   }catch(e){
     console.error('Camera error:',e);
     if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
@@ -288,6 +408,7 @@ async function switchCamera(){
   }
   const msg=document.getElementById('camMsg');
   const switchBtn=document.getElementById('switchBtn');
+  if(dualMode){ const live=stream; dualStreams.forEach(st=>{if(st&&st!==live)st.getTracks().forEach(t=>t.stop());}); dualStreams=[]; dualDevices=[]; activeDualIndex=-1; dualMode=false; const db=document.getElementById('dualBtn'); if(db)db.textContent='📷 DUAL CAMERA'; document.getElementById('dualCameraPanel')?.classList.add('hidden'); }
   const preview=document.getElementById('preview');
   switchBtn.disabled=true;
   msg.textContent='Switching camera…';
@@ -432,6 +553,6 @@ async function makeOffer(id){
   await channel.send({type:'broadcast',event:'camera-settings',payload:{target:id,zoom:Number(cameraZoom)||1,rotation:cameraRotation}});
 }
 
-window.stopCamera=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;for(const pc of peers.values())pc.close();peers.clear();document.getElementById('preview').srcObject=null;document.getElementById('startBtn').classList.remove('hidden');document.getElementById('stopBtn').classList.add('hidden');document.getElementById('switchBtn').classList.add('hidden');document.getElementById('camMsg').textContent='Camera stopped.';const r=document.getElementById('zoomRange'),n=document.getElementById('zoomNumber');if(r)r.disabled=true;if(n)n.disabled=true;}
+window.stopCamera=()=>{stopDualCameras();dualMode=false;document.getElementById('dualCameraPanel')?.classList.add('hidden');document.getElementById('dualBtn')?.classList.add('hidden');if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;for(const pc of peers.values())pc.close();peers.clear();document.getElementById('preview').srcObject=null;document.getElementById('startBtn').classList.remove('hidden');document.getElementById('stopBtn').classList.add('hidden');document.getElementById('switchBtn').classList.add('hidden');document.getElementById('camMsg').textContent='Camera stopped.';const r=document.getElementById('zoomRange'),n=document.getElementById('zoomNumber');if(r)r.disabled=true;if(n)n.disabled=true;}
 init();
 </script></body></html>
