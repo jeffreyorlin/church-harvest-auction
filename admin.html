@@ -179,19 +179,47 @@ async function offlineBid(){
 }
 async function loadUnderageAttempts(){
  const {data,error}=await sb.from("underage_bidding_attempts").select("*").order("attempted_at",{ascending:false}).limit(20);
- if(error)return;
- const box=document.getElementById("underageHistory"),notice=document.getElementById("underageNotice");
- if(!data||!data.length){box.innerHTML='<div class="muted">No under-18 attempts recorded.</div>';notice.classList.add("hidden");return;}
+ if(error){console.error("Under-18 load failed",error);return;}
+ const box=document.getElementById("underageHistory"),notice=document.getElementById("underageNotice"),btn=document.getElementById("clearAgeNoticeBtn");
+ if(!data||!data.length){
+   box.innerHTML='<div class="muted">No under-18 attempts recorded.</div>';
+   notice.classList.add("hidden");
+   btn.classList.add("hidden");
+   localStorage.removeItem("churchAuctionAgeNoticeClearedId");
+   return;
+ }
  const latest=data[0];
- notice.textContent=`⚠️ Under-18 bidding attempt detected: ${latest.name} (${latest.age})`;notice.classList.remove("hidden");
+ const latestId=String(latest.id);
+ const clearedId=localStorage.getItem("churchAuctionAgeNoticeClearedId")||"";
+ // Only show the alert again when a NEW attempt is recorded. A refresh/realtime
+ // event must not undo the user's CLEAR action.
+ if(clearedId===latestId){
+   notice.classList.add("hidden");
+   btn.classList.add("hidden");
+ }else{
+   notice.innerHTML=`⚠️ UNDER-18 BIDDING ATTEMPT DETECTED<br><span>${esc(latest.name)} — AGE ${esc(latest.age)}</span>`;
+   notice.classList.remove("hidden");
+   btn.classList.remove("hidden");
+ }
  box.innerHTML=data.map(x=>`<div class="history-row"><div><b>${esc(x.name)}</b> — age ${esc(x.age)}<br><span class="muted">${esc(x.address||"")} • ${new Date(x.attempted_at).toLocaleString("en-IN")}</span></div><button class="danger small-btn" onclick="deleteUnderageAttempt(${Number(x.id)})">DELETE</button></div>`).join("");
 }
 
 function clearAgeLimitNotification(){
  const notice=document.getElementById("underageNotice");
- if(notice) notice.classList.add("hidden");
  const btn=document.getElementById("clearAgeNoticeBtn");
+ const rows=document.querySelectorAll("#underageHistory .history-row");
+ // Store the latest attempt ID so realtime refreshes cannot immediately recreate the alert.
+ const firstRow=rows[0];
+ let latestId=null;
+ if(firstRow){
+   const del=firstRow.querySelector("button[onclick^=\"deleteUnderageAttempt\"]");
+   const m=del && del.getAttribute("onclick").match(/deleteUnderageAttempt\((\d+)\)/);
+   if(m) latestId=m[1];
+ }
+ if(latestId) localStorage.setItem("churchAuctionAgeNoticeClearedId",latestId);
+ if(notice) notice.classList.add("hidden");
  if(btn) btn.classList.add("hidden");
+ showMsg("Age-limit notification cleared. It will appear again only for a new Under-18 attempt.",true);
 }
 async function deleteUnderageAttempt(id){
  if(!confirm("Delete this under-18 bidding attempt?")) return;
@@ -201,6 +229,8 @@ async function deleteUnderageAttempt(id){
    error=rpc.error || (rpc.data && !rpc.data.ok ? new Error(rpc.data.message||"Delete failed") : null);
  }
  if(error){showMsg("Unable to delete under-18 attempt: "+error.message);return;}
+ const clearedId=localStorage.getItem("churchAuctionAgeNoticeClearedId");
+ if(clearedId===String(id)) localStorage.removeItem("churchAuctionAgeNoticeClearedId");
  await loadUnderageAttempts();
  showMsg("Under-18 attempt deleted.",true);
 }
