@@ -15,6 +15,7 @@
         <option value="15000">15 sec</option>
         <option value="30000">30 sec</option>
       </select>
+      <div class="tv-rotation-controls" aria-label="TV camera rotation"><span>ROTATE:</span><button type="button" data-rot="0" onclick="setTvRotation(0)">0°</button><button type="button" data-rot="90" onclick="setTvRotation(90)">90°</button><button type="button" data-rot="180" onclick="setTvRotation(180)">180°</button><button type="button" data-rot="270" onclick="setTvRotation(270)">270°</button></div>
       <button onclick="toggleFullscreen()">⛶ FULLSCREEN</button>
     </div>
   </div>
@@ -103,17 +104,43 @@ async function refresh(){const {data,error}=await sb.from("auction_state").selec
  if(emailEl) emailEl.textContent=sold?`${email} (${winner}, ${address})`:"";
  document.getElementById("soldSub").textContent=sold?`SOLD OUT TO ${winner} • ${money(data.current_bid)}`:"";
 }
-const CAMERA_ICE_SERVERS=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]; let cameraPendingIce=[]; let liveCameraSettings={zoom:1,rotation:0};
+const CAMERA_ICE_SERVERS=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]; let cameraPendingIce=[]; let liveCameraSettings={zoom:1,rotation:0}; let tvManualRotation=null;
 function applyLiveCameraSettings(settings){
   if(!settings)return;
   if(Number.isFinite(Number(settings.zoom))) liveCameraSettings.zoom=Math.max(1,Number(settings.zoom));
   if(Number.isFinite(Number(settings.rotation))) liveCameraSettings.rotation=((Number(settings.rotation)%360)+360)%360;
-  const transform=`rotate(${liveCameraSettings.rotation}deg) scale(${liveCameraSettings.rotation===90||liveCameraSettings.rotation===270 ? 0.5625 : 1})`;
+  applyTvVideoTransform();
+}
+
+function applyTvVideoTransform(){
+  const rotation=((Number(tvManualRotation)%360)+360)%360;
+  const cameraRotation=((Number(liveCameraSettings.rotation)%360)+360)%360;
+  const effectiveRotation=tvManualRotation!==null ? rotation : cameraRotation;
+  const quarter=effectiveRotation===90||effectiveRotation===270;
+  const scale=quarter ? 0.56 : 1;
+  const zoom=Math.max(1,Number(liveCameraSettings.zoom)||1);
+  const transform=`rotate(${effectiveRotation}deg) scale(${scale*zoom})`;
   ['cameraVideo','miniCameraVideo'].forEach(id=>{
     const v=document.getElementById(id);
-    if(v){v.style.transformOrigin='center center';v.style.transform=transform;v.dataset.cameraRotation=String(liveCameraSettings.rotation);v.dataset.cameraZoom=String(liveCameraSettings.zoom);}
+    if(v){
+      v.style.transformOrigin='center center';
+      v.style.transform=transform;
+      v.style.maxWidth='100%';
+      v.style.maxHeight='100%';
+      v.dataset.cameraRotation=String(effectiveRotation);
+      v.dataset.cameraZoom=String(zoom);
+    }
+  });
+  document.querySelectorAll('.tv-rotation-controls button[data-rot]').forEach(btn=>{
+    btn.classList.toggle('active',Number(btn.dataset.rot)===effectiveRotation);
   });
 }
+
+function setTvRotation(deg){
+  tvManualRotation=((Number(deg)%360)+360)%360;
+  applyTvVideoTransform();
+}
+
 
 async function setupCameraViewer(){
  camChannel=sb.channel("church-auction-camera-v1",{config:{broadcast:{ack:true}}});
