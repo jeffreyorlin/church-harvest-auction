@@ -108,10 +108,7 @@ document.body.classList.add('camera-locked');
       </div>
       <div class="camera-rotation-row">
         <span>🔄 ROTATION</span>
-        <button type="button" class="rotationBtn active" data-rotation="0">CAMERA 0°</button>
-        <button type="button" class="rotationBtn" data-rotation="90">CAMERA 90°</button>
-        <button type="button" class="rotationBtn" data-rotation="180">CAMERA 180°</button>
-        <button type="button" class="rotationBtn" data-rotation="270">CAMERA 270°</button>
+        <button type="button" id="rotateCycleBtn" class="rotationBtn active">🔄 CAMERA 0°</button>
       </div>
     </div>
     <p id="camMsg" class="small muted">Point this phone at the product. Keep this page open during the auction.</p>
@@ -243,8 +240,12 @@ function setRotation(rotation, broadcast=true){
   cameraRotation=((Number(rotation)%360)+360)%360;
   const preview=document.getElementById('preview');
   if(preview) preview.style.transform=`rotate(${cameraRotation}deg) scale(${cameraZoom})`;
-  document.querySelectorAll('.rotationBtn').forEach(b=>b.classList.toggle('active',Number(b.dataset.rotation)===cameraRotation));
+  const btn=document.getElementById('rotateCycleBtn');
+  if(btn){btn.textContent=`🔄 CAMERA ${cameraRotation}°`;btn.classList.add('active');}
   if(broadcast) broadcastCameraSettings();
+}
+function cycleRotation(){
+  setRotation((cameraRotation+90)%360);
 }
 function broadcastCameraSettings(){
   if(!channel)return;
@@ -290,7 +291,8 @@ function initCameraControls(){
   range.oninput=()=>applyZoom(range.value);
   num.onchange=()=>applyZoom(num.value);
   num.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();applyZoom(num.value)}};
-  document.querySelectorAll('.rotationBtn').forEach(btn=>btn.onclick=()=>setRotation(btn.dataset.rotation));
+  const rotateBtn=document.getElementById('rotateCycleBtn');
+  if(rotateBtn) rotateBtn.onclick=cycleRotation;
   updateZoomUI(cameraZoom);
   if(controls) controls.classList.remove('hidden');
 }
@@ -644,6 +646,9 @@ async function switchCamera(){
     }
 
     stream=newStream;
+    localCameraStream=newStream;
+    activeSource='local';
+    activeRemoteLens=0;
     preview.srcObject=newStream;
     try{await preview.play();}catch(_){ }
 
