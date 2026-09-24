@@ -53,8 +53,27 @@ document.body.classList.add('camera-locked');
     <p id="camMsg" class="small muted">Point this phone at the product. Keep this page open during the auction.</p>
   </div>
 </div></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+async function loadSupabaseClient(){
+  if(window.supabase && typeof window.supabase.createClient==='function') return true;
+  const urls=[
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
+    'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js'
+  ];
+  for(const url of urls){
+    try{
+      await new Promise((resolve,reject)=>{
+        const sc=document.createElement('script');
+        sc.src=url; sc.async=false;
+        sc.onload=()=>resolve(); sc.onerror=()=>reject(new Error('Could not load '+url));
+        document.head.appendChild(sc);
+      });
+      if(window.supabase && typeof window.supabase.createClient==='function') return true;
+    }catch(e){ console.warn('Supabase CDN failed:',url,e); }
+  }
+  return false;
+}
+
 const KEY='churchAuctionConfig', ROOM='church-auction-camera-v1'; let sb, channel, stream=null, peers=new Map(); let cameraUser=null;
 const ICE_SERVERS=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}];
 const pendingIce=new Map();
@@ -64,7 +83,36 @@ function box(){const c=cfg();if(c.url&&c.key)return '';return `<div class="setup
 window.saveCfg=()=>{const url=document.getElementById('sbUrl').value.trim().replace(/\/$/,'');const key=document.getElementById('sbKey').value.trim();if(!url||!key)return alert('Enter both values.');save({url,key});location.reload()}
 function authBox(){return `<div class="setup card"><h2>Camera admin login</h2><p class="muted">Sign in with the same Supabase admin account used for the auction.</p><input id="email" type="email" placeholder="Admin email"><input id="pass" type="password" placeholder="Password"><button class="primary" onclick="login()">LOGIN</button><p id="loginMsg" class="small error"></p></div>`}
 window.login=async()=>{const msg=document.getElementById('loginMsg');const {error}=await sb.auth.signInWithPassword({email:document.getElementById('email').value.trim(),password:document.getElementById('pass').value});if(error)msg.textContent=error.message;else location.reload()}
-async function init(){document.getElementById('setupArea').innerHTML=box();const c=cfg();if(!c.url||!c.key)return;sb=supabase.createClient(c.url,c.key);const {data:{session}}=await sb.auth.getSession();if(!session){document.getElementById('authArea').innerHTML=authBox();return;}cameraUser=session.user;document.getElementById('authArea').innerHTML='<div class="card"><button onclick="logout()">LOG OUT</button></div>';document.getElementById('app').classList.remove('hidden');channel=sb.channel(ROOM,{config:{broadcast:{ack:true}}});channel.on('broadcast',{event:'join'},async ({payload})=>{if(!stream)return;await makeOffer(payload.id)}).on('broadcast',{event:'answer'},async ({payload})=>{const pc=peers.get(payload.id);if(pc){try{await pc.setRemoteDescription(payload.description);const q=pendingIce.get(payload.id)||[];for(const c of q)await pc.addIceCandidate(c).catch(()=>{});pendingIce.delete(payload.id);}catch(e){console.warn('Remote description failed',e)}}}).on('broadcast',{event:'ice'},async ({payload})=>{const pc=peers.get(payload.id); if(!payload.candidate)return; if(!pc){return;} try{if(pc.remoteDescription)await pc.addIceCandidate(payload.candidate); else{const q=pendingIce.get(payload.id)||[];q.push(payload.candidate);pendingIce.set(payload.id,q);}}catch(e){console.warn('ICE candidate ignored',e);}}).subscribe()}
+async function init(){
+  const setup=document.getElementById('setupArea');
+  const auth=document.getElementById('authArea');
+  setup.innerHTML=box();
+  const c=cfg();
+  if(!c.url||!c.key)return;
+  auth.innerHTML='<div class="card center"><strong>Loading secure camera login…</strong></div>';
+  try{
+    const loaded=await loadSupabaseClient();
+    if(!loaded){
+      auth.innerHTML='<div class="card center"><h2>⚠️ Connection problem</h2><p class="error">Supabase could not be loaded. Check your internet connection, then refresh this page.</p><button onclick="location.reload()">REFRESH PAGE</button></div>';
+      return;
+    }
+    sb=window.supabase.createClient(c.url,c.key);
+    const {data:{session},error:sessionError}=await sb.auth.getSession();
+    if(sessionError) throw sessionError;
+    if(!session){auth.innerHTML=authBox();return;}
+    cameraUser=session.user;
+    auth.innerHTML='<div class="card"><button onclick="logout()">LOG OUT</button></div>';
+    document.getElementById('app').classList.remove('hidden');
+    channel=sb.channel(ROOM,{config:{broadcast:{ack:true}}});
+    channel.on('broadcast',{event:'join'},async ({payload})=>{if(!stream)return;await makeOffer(payload.id)})
+      .on('broadcast',{event:'answer'},async ({payload})=>{const pc=peers.get(payload.id);if(pc){try{await pc.setRemoteDescription(payload.description);const q=pendingIce.get(payload.id)||[];for(const c of q)await pc.addIceCandidate(c).catch(()=>{});pendingIce.delete(payload.id);}catch(e){console.warn('Remote description failed',e)}}})
+      .on('broadcast',{event:'ice'},async ({payload})=>{const pc=peers.get(payload.id);if(!payload.candidate||!pc)return;try{if(pc.remoteDescription)await pc.addIceCandidate(payload.candidate);else{const q=pendingIce.get(payload.id)||[];q.push(payload.candidate);pendingIce.set(payload.id,q);}}catch(e){console.warn('ICE candidate ignored',e);}})
+      .subscribe();
+  }catch(e){
+    console.error('Camera page initialization failed:',e);
+    auth.innerHTML='<div class="card center"><h2>⚠️ Camera page error</h2><p class="error">'+String(e.message||e).replace(/[<>]/g,'')+'</p><button onclick="location.reload()">REFRESH PAGE</button></div>';
+  }
+}
 window.logout=async()=>{stopCamera();await sb.auth.signOut();location.reload()}
 async function startCamera(){
   const msg=document.getElementById('camMsg');
@@ -139,64 +187,90 @@ async function startCamera(){
   }
 }
 async function switchCamera(){
-  if(!stream){ return; }
+  if(!stream){
+    const m=document.getElementById('camMsg');
+    if(m)m.textContent='Start the camera first.';
+    return;
+  }
   const msg=document.getElementById('camMsg');
   const switchBtn=document.getElementById('switchBtn');
+  const preview=document.getElementById('preview');
   switchBtn.disabled=true;
-  msg.textContent='Switching camera… keeping 1920×1080 @ 30 FPS…';
+  msg.textContent='Switching camera…';
 
   const oldStream=stream;
   const oldTrack=oldStream.getVideoTracks()[0];
   const oldSettings=oldTrack && oldTrack.getSettings ? oldTrack.getSettings() : {};
+  const currentFacing=oldSettings.facingMode || '';
+  const nextFacing=currentFacing==='environment' ? 'user' : 'environment';
   const currentDeviceId=oldSettings.deviceId || '';
 
   try{
-    // Ask for camera permission first, then enumerate devices. This lets us
-    // choose the other physical camera without changing the requested quality.
-    let devices=await navigator.mediaDevices.enumerateDevices();
-    let cameras=devices.filter(d=>d.kind==='videoinput');
+    // On phones, facingMode is more reliable than deviceId. Stop the current
+    // camera before requesting the other physical camera (important on Chrome
+    // Android and mobile browsers where both cameras cannot stay open at once).
+    oldStream.getTracks().forEach(t=>t.stop());
 
-    let target=null;
-    if(cameras.length>1 && currentDeviceId){
-      target=cameras.find(d=>d.deviceId!==currentDeviceId);
+    let newStream=null;
+    let selected='';
+
+    // 1) Try the opposite front/back camera while keeping Full HD/30 as the preference.
+    try{
+      newStream=await navigator.mediaDevices.getUserMedia({
+        video:{
+          facingMode:{exact:nextFacing},
+          width:{ideal:1920,min:1280},
+          height:{ideal:1080,min:720},
+          frameRate:{ideal:30,min:24}
+        },
+        audio:false
+      });
+      selected=nextFacing;
+    }catch(e1){
+      console.warn('facingMode switch failed:',e1);
     }
 
-    // Prefer the opposite-facing camera when the browser exposes facingMode.
-    const currentFacing=oldSettings.facingMode || '';
-    const opposite=currentFacing==='environment'?'user':currentFacing==='user'?'environment':'';
+    // 2) If facingMode is unavailable, enumerate cameras and choose a different device.
+    if(!newStream){
+      const devices=await navigator.mediaDevices.enumerateDevices();
+      const cameras=devices.filter(d=>d.kind==='videoinput');
+      const target=cameras.find(d=>d.deviceId && d.deviceId!==currentDeviceId);
+      if(target){
+        newStream=await navigator.mediaDevices.getUserMedia({
+          video:{
+            deviceId:{exact:target.deviceId},
+            width:{ideal:1920,min:1280},
+            height:{ideal:1080,min:720},
+            frameRate:{ideal:30,min:24}
+          },
+          audio:false
+        });
+      }
+    }
 
-    const constraints={
-      width:{exact:1920},
-      height:{exact:1080},
-      frameRate:{exact:30},
-      ...(target ? {deviceId:{exact:target.deviceId}} : (opposite ? {facingMode:{exact:opposite}} : {}))
-    };
-
-    let newStream;
-    try{
-      newStream=await navigator.mediaDevices.getUserMedia({video:constraints,audio:false});
-    }catch(firstErr){
-      console.warn('Exact 1080p/30 switch unavailable; trying ideal quality:',firstErr);
-      const fallback={
-        width:{ideal:1920,min:1280},
-        height:{ideal:1080,min:720},
-        frameRate:{ideal:30,min:24},
-        ...(target ? {deviceId:{exact:target.deviceId}} : (opposite ? {facingMode:{exact:opposite}} : {}))
-      };
-      newStream=await navigator.mediaDevices.getUserMedia({video:fallback,audio:false});
+    // 3) Last fallback: ask for the opposite facing mode without exact constraints.
+    if(!newStream){
+      newStream=await navigator.mediaDevices.getUserMedia({
+        video:{facingMode:nextFacing},audio:false
+      });
+      selected=nextFacing;
     }
 
     const newTrack=newStream.getVideoTracks()[0];
-    // Preserve the requested quality after switching whenever the phone/browser supports it.
+    if(!newTrack) throw new Error('The selected camera did not provide a video track.');
+
+    // Preserve Full HD/30 whenever the selected camera supports it.
     try{
-      await newTrack.applyConstraints({width:{exact:1920},height:{exact:1080},frameRate:{exact:30}});
-    }catch(e){
-      console.warn('Exact 1920×1080@30 not available on the selected camera:',e);
-      await newTrack.applyConstraints({width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}}).catch(()=>{});
+      await newTrack.applyConstraints({
+        width:{exact:1920},height:{exact:1080},frameRate:{exact:30}
+      });
+    }catch(_){
+      await newTrack.applyConstraints({
+        width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}
+      }).catch(()=>{});
     }
 
-    // Replace the video track on every existing WebRTC peer. This keeps the
-    // TV/bidding viewers connected instead of creating a new broadcast room.
+    // Replace the track for every connected TV/viewer without renegotiating.
     for(const [id,pc] of peers){
       try{
         const sender=pc.getSenders().find(x=>x.track && x.track.kind==='video');
@@ -205,18 +279,33 @@ async function switchCamera(){
     }
 
     stream=newStream;
-    document.getElementById('preview').srcObject=stream;
-    try{await document.getElementById('preview').play();}catch(_){ }
-    oldStream.getTracks().forEach(t=>t.stop());
+    preview.srcObject=newStream;
+    try{await preview.play();}catch(_){ }
 
     const settings=newTrack.getSettings ? newTrack.getSettings() : {};
     const fps=settings.frameRate ? Math.round(settings.frameRate) : '?';
     const isFullHD=settings.width===1920 && settings.height===1080;
-    const facing=settings.facingMode==='user'?'FRONT CAMERA':settings.facingMode==='environment'?'BACK CAMERA':'';
-    msg.textContent='LIVE — '+(settings.width||'?')+'×'+(settings.height||'?')+' @ '+fps+' FPS'+(isFullHD?' — FULL HD':' — device/browser mode')+(facing?' — '+facing:'')+' — Camera connected successfully.';
+    const facing=settings.facingMode==='user' || selected==='user' ? 'FRONT CAMERA' :
+                  settings.facingMode==='environment' || selected==='environment' ? 'BACK CAMERA' : 'CAMERA SWITCHED';
+    msg.textContent='LIVE — '+(settings.width||'?')+'×'+(settings.height||'?')+' @ '+fps+' FPS'+
+      (isFullHD?' — FULL HD':' — device/browser mode')+' — '+facing+' — Camera switched successfully.';
   }catch(e){
     console.error('Camera switch failed:',e);
     msg.textContent='Could not switch camera: '+(e.message||e.name||String(e));
+    // Try to restore the previous camera if switching failed.
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({
+        video:{width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}},audio:false
+      });
+      preview.srcObject=stream;
+      for(const [id,pc] of peers){
+        try{
+          const sender=pc.getSenders().find(x=>x.track && x.track.kind==='video');
+          const track=stream.getVideoTracks()[0];
+          if(sender&&track) await sender.replaceTrack(track);
+        }catch(_){ }
+      }
+    }catch(_){ }
   }finally{
     switchBtn.disabled=false;
   }
