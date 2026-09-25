@@ -166,7 +166,7 @@ create or replace function public.place_bid(
   p_bidder_age integer, p_bidder_address text
 ) returns jsonb
 language plpgsql security definer set search_path=public as $$
-declare a auction_state%rowtype; v_user_id uuid:=auth.uid(); v_email text:=auth.jwt() ->> 'email'; v_name text:=trim(split_part(coalesce(p_bidder_name,''),'|||',1)); v_address text:=trim(coalesce(p_bidder_address, split_part(coalesce(p_bidder_name,''),'|||',3),''));
+declare a auction_state%rowtype; v_user_id uuid:=auth.uid(); v_email text:=case when p_source='offline' then nullif(trim(split_part(coalesce(p_bidder_name,''),'|||',2)),'') else auth.jwt() ->> 'email' end; v_name text:=trim(split_part(coalesce(p_bidder_name,''),'|||',1)); v_address text:=trim(coalesce(p_bidder_address, split_part(coalesce(p_bidder_name,''),'|||',3),''));
 begin
  if v_user_id is null then return jsonb_build_object('ok',false,'message','Please sign in with Google before bidding.'); end if;
  if p_source not in ('online','offline') then return jsonb_build_object('ok',false,'message','Invalid bid source.'); end if;

@@ -5,7 +5,21 @@
 <body>
 <div class="wrap">
 <div class="church-brand tv-brand-bar"><span class="brand-cross">✝️</span> CSI MEEETPAR YESU ALAYAM</div>
-<div id="soldOverlay" class="sold-overlay"><div class="sold-box"><div class="sold-title">🔨 SOLD OUT</div><div id="soldEmail" class="sold-email"></div><div id="soldSub" class="sold-sub">This item has been sold successfully</div></div></div>
+<div id="soldOverlay" class="sold-overlay">
+  <div class="sold-box">
+    <div class="sold-title">SOLD OUT</div>
+    <img class="sold-stamp" src="sold-out-stamp.png" alt="SOLD OUT">
+    <div class="sold-details">
+      <div class="sold-detail"><span class="label">SOLD OUT TO</span><span id="soldName">Winner</span></div>
+      <div class="sold-detail"><span class="label">AGE</span><span id="soldAge">Not provided</span></div>
+      <div class="sold-detail"><span class="label">BID TYPE</span><span id="soldSource">ONLINE</span></div>
+      <div class="sold-detail"><span class="label">GMAIL / EMAIL</span><span id="soldGmail">Not provided</span></div>
+      <div class="sold-detail full"><span class="label">ADDRESS</span><span id="soldAddress">Not provided</span></div>
+    </div>
+    <div id="soldSub" class="sold-sub">SOLD OUT</div>
+  </div>
+</div>
+<audio id="soldClapAudio" src="sold-clapping.mp3" preload="auto"></audio>
 <h1 class="auction-pulse">⛪ Live Church Auction</h1>
 <div id="setupArea"></div>
 <div id="app" class="hidden">
@@ -180,12 +194,17 @@ async function refresh(){
  const parts = String(data.highest_bidder || "").split("|||");
  const winner = parts[0] || "Winner";
  const email = parts[1] || "";
- const address = parts[2] || "";
- const emailEl = document.getElementById("soldEmail");
- if(emailEl) emailEl.textContent = sold ? `${email} (${winner}, ${address})` : "";
- document.getElementById("soldSub").textContent = sold
-   ? `SOLD OUT TO ${winner} • ${money(data.current_bid)}`
-   : "";
+ const address = parts[2] || String(data.bidder_address||"") || "";
+ let age = (data.bidder_age!==null && data.bidder_age!==undefined && data.bidder_age!=="") ? String(data.bidder_age) : "Not provided";
+ let source = String(data.highest_bid_source||"").toUpperCase() || "NOT PROVIDED";
+ const setText=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v||"Not provided"};
+ if(sold){
+   const {data:winBid}=await sb.from("bids").select("bidder_email,bidder_address,bidder_age,source,bidder_name,amount").eq("item_number",data.item_number).eq("amount",data.current_bid).order("id",{ascending:false}).limit(1).maybeSingle();
+   if(winBid){ if(winBid.bidder_email) email=winBid.bidder_email; if(winBid.bidder_address) address=winBid.bidder_address; if(winBid.bidder_age!==null && winBid.bidder_age!==undefined) age=String(winBid.bidder_age); if(winBid.source) source=String(winBid.source).toUpperCase(); }
+ }
+ setText("soldName",winner); setText("soldAge",age); setText("soldSource",source); setText("soldGmail",email||"Not provided"); setText("soldAddress",address||"Not provided");
+ document.getElementById("soldSub").textContent = sold ? `SOLD OUT TO ${winner} • ${money(data.current_bid)}` : "";
+ if(sold) playSoldClap(`${data.item_number}|${data.current_bid}|${data.highest_bidder}|${data.status}`); else {lastSoldKey="";stopSoldClap();}
  const bidCard=document.getElementById("bidCard");
  const amount=document.getElementById("amount");
  const bidButton=bidCard?.querySelector("button.primary");

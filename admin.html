@@ -31,6 +31,9 @@
     <p class="muted">Use this when someone at church calls out a bid.</p>
     <div class="grid">
       <input id="offlineName" placeholder="Bidder name">
+      <input id="offlineAge" type="number" min="1" max="120" placeholder="Age">
+      <input id="offlineEmail" type="email" placeholder="Gmail / Email (optional)">
+      <input id="offlineAddress" placeholder="Address (optional)">
       <input id="offlineAmount" type="number" min="0" step="1" placeholder="Bid ₹">
     </div>
     <button class="good" onclick="offlineBid()">ADD OFFLINE BID</button>
@@ -172,10 +175,20 @@ async function clearRecentBidHistory(){
   showMsg("Recent bids cleared.",true);
 }
 async function offlineBid(){
- const a=await getState();const name=document.getElementById("offlineName").value.trim();const amount=Number(document.getElementById("offlineAmount").value);
+ const a=await getState();
+ const name=document.getElementById("offlineName").value.trim();
+ const ageRaw=document.getElementById("offlineAge").value.trim();
+ const age=ageRaw?Number(ageRaw):null;
+ const email=document.getElementById("offlineEmail").value.trim();
+ const address=document.getElementById("offlineAddress").value.trim();
+ const amount=Number(document.getElementById("offlineAmount").value);
  if(!name||!amount)return alert("Enter bidder name and amount.");
- const {data,error}=await sb.rpc("place_bid",{p_item_number:a.item_number,p_bidder_name:name,p_amount:amount,p_source:"offline",p_bidder_age:null,p_bidder_address:""});
- if(error)alert(error.message);else if(!data.ok)alert(data.message);else{document.getElementById("offlineAmount").value="";refresh()}
+ if(age!==null && (!Number.isInteger(age)||age<1||age>120))return alert("Enter a valid age.");
+ const packed=name+"|||"+email+"|||"+address;
+ const {data,error}=await sb.rpc("place_bid",{p_item_number:a.item_number,p_bidder_name:packed,p_amount:amount,p_source:"offline",p_bidder_age:age,p_bidder_address:address});
+ if(error)alert(error.message);else if(!data.ok)alert(data.message);else{
+   document.getElementById("offlineName").value="";document.getElementById("offlineAge").value="";document.getElementById("offlineEmail").value="";document.getElementById("offlineAddress").value="";document.getElementById("offlineAmount").value="";refresh()
+ }
 }
 async function loadUnderageAttempts(){
  const {data,error}=await sb.from("underage_bidding_attempts").select("*").order("attempted_at",{ascending:false}).limit(20);

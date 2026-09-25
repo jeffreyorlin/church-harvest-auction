@@ -51,11 +51,17 @@ video{width:100%;max-height:70vh;background:#000;border-radius:16px;object-fit:c
 #profileAddress { min-height: 120px; }
 
 /* Sold-out animation */
-.sold-overlay { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+.sold-overlay { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.82); backdrop-filter: blur(5px); padding: 24px; box-sizing: border-box; }
 .sold-overlay.show { display: flex; animation: soldFade .35s ease-out; }
-.sold-box { padding: 34px 55px; border-radius: 24px; text-align: center; background: #fff; box-shadow: 0 0 45px rgba(255,255,255,.45); animation: soldPulse 1s ease-in-out infinite; }
-.sold-title { font-size: clamp(64px, 12vw, 140px); font-weight: 900; letter-spacing: 4px; margin: 0; }
-.sold-sub { font-size: clamp(24px, 4vw, 44px); font-weight: 800; margin-top: 10px; }
+.sold-box { width: min(94vw, 1200px); max-height: 92vh; overflow:auto; padding: 28px 42px 34px; border-radius: 26px; text-align: center; background: #fff; box-shadow: 0 0 55px rgba(255,255,255,.5); animation: soldPulse 1s ease-in-out infinite; box-sizing:border-box; }
+.sold-title { font-size: clamp(42px, 7vw, 96px); font-weight: 900; letter-spacing: 3px; margin: 0; color:#003b73!important; }
+.sold-stamp { width: clamp(120px, 17vw, 220px); height: clamp(120px, 17vw, 220px); object-fit:contain; display:block; margin: 4px auto 8px; }
+.sold-details { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 18px; margin:16px auto 8px; max-width:1050px; text-align:left; }
+.sold-detail { background:#f3f7fb; border:2px solid #d8e5f1; border-radius:12px; padding:10px 14px; font-size:clamp(17px,2.1vw,30px); font-weight:800; color:#003b73; word-break:break-word; }
+.sold-detail.full { grid-column:1/-1; }
+.sold-detail .label { font-size:.58em; opacity:.72; display:block; margin-bottom:2px; letter-spacing:.5px; }
+.sold-sub { font-size: clamp(22px, 3.5vw, 42px); font-weight: 900; margin-top: 12px; color:#003b73!important; }
+@media(max-width:700px){.sold-box{padding:20px 16px 24px}.sold-details{grid-template-columns:1fr}.sold-detail.full{grid-column:auto}}
 @keyframes soldPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
 @keyframes soldFade { from{opacity:0} to{opacity:1} }
 @keyframes soldShake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-7px)} 75%{transform:translateX(7px)} }
