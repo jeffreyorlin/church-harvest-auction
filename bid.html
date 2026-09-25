@@ -19,7 +19,7 @@
     <div id="soldSub" class="sold-sub">SOLD OUT</div>
   </div>
 </div>
-<audio id="soldClapAudio" src="sold-clapping.mp3" preload="auto"></audio>
+<audio id="soldClapAudio" src="sold-clapping.mp3?v=2" preload="auto"></audio>
 <h1 class="auction-pulse">⛪ Live Church Auction</h1>
 <div id="setupArea"></div>
 <div id="app" class="hidden">
@@ -77,6 +77,60 @@ function money(v){return "₹"+Number(v||0).toLocaleString("en-IN",{maximumFract
 <script>
 let sb,channel,state,camChannel,camPeer,viewerId=Math.random().toString(36).slice(2);
 let bidderName="", bidderAddress="", bidderAge="", bidderEmail="";
+let lastSoldKey="";
+let soldAudioTimer=null;
+let pendingSoldSound=false;
+
+// Play the uploaded clapping sound at full volume for exactly 5 seconds.
+function playSoldClap(key){
+  if(key===lastSoldKey) return;
+  lastSoldKey=key;
+  pendingSoldSound=true;
+  const a=document.getElementById("soldClapAudio");
+  if(!a) return;
+  try{
+    clearTimeout(soldAudioTimer);
+    a.pause();
+    a.currentTime=0;
+    a.volume=1.0;
+    const p=a.play();
+    if(p&&p.catch){
+      p.catch(()=>{
+        // Browser autoplay may require one user interaction.
+        // The first click/tap/keypress below retries the same sound.
+      });
+    }
+    soldAudioTimer=setTimeout(()=>{
+      a.pause();
+      a.currentTime=0;
+      pendingSoldSound=false;
+    },5000);
+  }catch(e){ console.warn("SOLD OUT sound error",e); }
+}
+
+function stopSoldClap(){
+  const a=document.getElementById("soldClapAudio");
+  if(a){a.pause();a.currentTime=0;}
+  clearTimeout(soldAudioTimer);
+  soldAudioTimer=null;
+  pendingSoldSound=false;
+}
+
+// Unlock/retry the sound after the browser receives a user gesture.
+function unlockSoldSound(){
+  if(!pendingSoldSound) return;
+  const a=document.getElementById("soldClapAudio");
+  if(!a) return;
+  try{
+    a.volume=1.0;
+    a.currentTime=0;
+    const p=a.play();
+    if(p&&p.catch)p.catch(()=>{});
+    clearTimeout(soldAudioTimer);
+    soldAudioTimer=setTimeout(()=>{a.pause();a.currentTime=0;pendingSoldSound=false;},5000);
+  }catch(e){}
+}
+["pointerdown","keydown","touchstart"].forEach(ev=>document.addEventListener(ev,unlockSoldSound,{passive:true}));
 
 async function init(){
  const c=getConfig();
