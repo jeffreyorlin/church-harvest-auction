@@ -28,17 +28,13 @@
   </div>
   <div class="card">
     <h2>Offline bid</h2>
-    <p class="muted">Use this when someone at church calls out a bid.</p>
+    <p class="muted">Use this when someone at church calls out a bid. Only bidder name and amount are required.</p>
     <div class="grid">
       <input id="offlineName" placeholder="Bidder name">
-      <input id="offlineAge" type="number" min="1" max="120" placeholder="Age">
-      <input id="offlineEmail" type="email" placeholder="Gmail / Email (optional)">
-      <input id="offlineAddress" placeholder="Address (optional)">
       <input id="offlineAmount" type="number" min="0" step="1" placeholder="Bid ₹">
     </div>
     <button class="good" onclick="offlineBid()">ADD OFFLINE BID</button>
   </div>
-
   <div class="card" id="underageCard">
     <h2>🚨 Under-18 Bidding Attempts</h2>
     <div id="underageNotice" class="admin-alert hidden"></div><div class="button-row"><button id="clearAgeNoticeBtn" class="danger hidden" onclick="clearAgeLimitNotification()">CLEAR AGE-LIMIT NOTIFICATION</button><button class="danger" onclick="deleteAllUnderageAttempts()">DELETE ALL UNDER-18 ATTEMPTS</button></div>
@@ -177,17 +173,17 @@ async function clearRecentBidHistory(){
 async function offlineBid(){
  const a=await getState();
  const name=document.getElementById("offlineName").value.trim();
- const ageRaw=document.getElementById("offlineAge").value.trim();
- const age=ageRaw?Number(ageRaw):null;
- const email=document.getElementById("offlineEmail").value.trim();
- const address=document.getElementById("offlineAddress").value.trim();
  const amount=Number(document.getElementById("offlineAmount").value);
- if(!name||!amount)return alert("Enter bidder name and amount.");
- if(age!==null && (!Number.isInteger(age)||age<1||age>120))return alert("Enter a valid age.");
- const packed=name+"|||"+email+"|||"+address;
- const {data,error}=await sb.rpc("place_bid",{p_item_number:a.item_number,p_bidder_name:packed,p_amount:amount,p_source:"offline",p_bidder_age:age,p_bidder_address:address});
- if(error)alert(error.message);else if(!data.ok)alert(data.message);else{
-   document.getElementById("offlineName").value="";document.getElementById("offlineAge").value="";document.getElementById("offlineEmail").value="";document.getElementById("offlineAddress").value="";document.getElementById("offlineAmount").value="";refresh()
+ if(a.status!=="open")return alert("Start/open an item first.");
+ if(name.length<2)return alert("Enter bidder name.");
+ if(!amount || amount<=Number(a.current_bid||0))return alert("Enter a bid higher than the current bid.");
+ const {data,error}=await sb.rpc("place_bid",{p_item_number:a.item_number,p_bidder_name:name,p_amount:amount,p_source:"offline",p_bidder_age:null,p_bidder_address:null});
+ if(error) alert(error.message);
+ else if(!data?.ok) alert(data?.message||"Offline bid failed.");
+ else {
+   document.getElementById("offlineName").value="";
+   document.getElementById("offlineAmount").value="";
+   await refresh();
  }
 }
 async function loadUnderageAttempts(){
@@ -287,37 +283,40 @@ setInterval(() => {
 <h2>🧾 Buyer History</h2>
 <button class="danger" onclick="clearBuyerHistory()">CLEAR BUYER HISTORY</button>
 <div class="table-wrap"><table class="history-table">
-<thead><tr><th>Buyer Name</th><th>Gmail</th><th>Address</th><th>Age</th><th>Item Name</th><th>Amount</th></tr></thead>
-<tbody id="buyerHistoryBody"><tr><td colspan="6">Loading...</td></tr></tbody>
+<thead><tr><th>Buyer Name</th><th>Bid Type</th><th>Item Name</th><th>Amount</th><th>Time</th></tr></thead>
+<tbody id="buyerHistoryBody"><tr><td colspan="5">Loading...</td></tr></tbody>
 </table></div></section>
 <script>
 async function clearBuyerHistory(){
- if(!confirm("Clear ALL buyer history? This will permanently delete the saved bidding history."))return;
+ if(!sb)return;
+ if(!confirm("Clear ALL buyer history? This will permanently delete every saved bid."))return;
  const {data,error}=await sb.rpc("clear_bidding_history");
- if(error){showMsg("Unable to clear buyer history: "+error.message);return;}
- if(!data || !data.ok){showMsg((data&&data.message)||"Unable to clear buyer history.");return;}
+ if(error){console.error(error);showMsg("Unable to clear buyer history: "+error.message);return;}
+ if(!data?.ok){showMsg(data?.message||"Unable to clear buyer history.");return;}
+ localStorage.setItem(RECENT_BIDS_CLEARED_KEY,String(Date.now()));
  const body=document.getElementById("buyerHistoryBody");
- if(body)body.innerHTML='<tr><td colspan="6">No bids yet</td></tr>';
+ if(body)body.innerHTML='<tr><td colspan="5">No buyer history</td></tr>';
  const history=document.getElementById("history");
  if(history)history.innerHTML="";
+ await loadBuyerHistory();
+ await loadBids();
  showMsg("Buyer history cleared successfully.",true);
 }
 async function loadBuyerHistory(){
  if(!sb)return;
- const {data,error}=await sb.from("bids").select("*").order("created_at",{ascending:false}).limit(100);
+ const {data,error}=await sb.from("bids").select("item_number,item_name,bidder_name,amount,source,created_at").order("created_at",{ascending:false}).limit(200);
  const body=document.getElementById("buyerHistoryBody");
  if(!body)return;
- if(error){body.innerHTML='<tr><td colspan="4">Unable to load history</td></tr>';return;}
- if(!data||!data.length){body.innerHTML='<tr><td colspan="6">No bids yet</td></tr>';return;}
+ if(error){console.error("Buyer history load failed",error);body.innerHTML='<tr><td colspan="5">Unable to load buyer history</td></tr>';return;}
+ if(!data||!data.length){body.innerHTML='<tr><td colspan="5">No buyer history</td></tr>';return;}
  body.innerHTML=data.map(r=>{
-   const parts=String(r.bidder_name||"").split("|||");
-   const name=esc(parts[0]||"");
-   const email=esc(parts[1]||"");
-   const address=esc(r.bidder_address || "");
-   const age=esc(r.bidder_age ?? "");
+   const name=esc(String(r.bidder_name||"").split("|||")[0]);
+   const source=String(r.source||"").toUpperCase();
+   const type=source==="OFFLINE"?"🔴 OFFLINE":"🟢 ONLINE";
    const item=esc(r.item_name || ("Item #"+(r.item_number??"")));
    const amount=money(r.amount);
-   return `<tr><td>${name}</td><td>${email}</td><td>${address}</td><td>${age}</td><td>${item}</td><td>${amount}</td></tr>`;
+   const when=r.created_at?new Date(r.created_at).toLocaleString("en-IN"):"";
+   return `<tr><td>${name}</td><td><b>${type}</b></td><td>${item}</td><td>${amount}</td><td>${esc(when)}</td></tr>`;
  }).join("");
 }
 </script>

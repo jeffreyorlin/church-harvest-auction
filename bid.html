@@ -168,8 +168,12 @@ window.saveProfile=async()=>{
  if(address.length<5){msg.textContent="❌ Please enter your full address.";return;}
  if(!Number.isInteger(age) || age<1 || age>120){msg.textContent="❌ Please enter a valid age.";return;}
  if(age<18){
-   msg.textContent="❌ Bidding is restricted to users aged 18 or above.";
-   try{await sb.rpc("log_underage_bidding_attempt",{p_name:name,p_address:address,p_age:age});}catch(e){}
+   msg.textContent="❌ Bidding is restricted to users aged 18 or above. Your attempt has been recorded for the auction administrator.";
+   const {error:logError}=await sb.rpc("log_underage_bidding_attempt",{p_name:name,p_address:address,p_age:age});
+   if(logError){
+     console.error("Under-18 attempt logging failed",logError);
+     msg.textContent="❌ Under-18 bidding is not allowed. The attempt could not be recorded automatically; please contact the administrator.";
+   }
    return;
  }
  localStorage.setItem("churchAuctionBidderName",name);
