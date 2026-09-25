@@ -125,11 +125,12 @@ async function refresh(){const {data,error}=await sb.from("auction_state").selec
  const winner=parts[0]||"Winner";
  let email=parts[1]||"";
  let address=parts[2]||String(data.bidder_address||"")||"";
- let age=(data.bidder_age!==null && data.bidder_age!==undefined && data.bidder_age!=="")?String(data.bidder_age):"Not provided";
+ let age=(parts[3]!==undefined && parts[3]!=="")?String(parts[3]):((data.bidder_age!==null && data.bidder_age!==undefined && data.bidder_age!=="")?String(data.bidder_age):"Not provided");
  let source=String(data.highest_bid_source||"").toUpperCase()||"NOT PROVIDED";
  const setText=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v||"Not provided"};
  if(sold){
-   const {data:winBid}=await sb.from("bids").select("bidder_email,bidder_address,bidder_age,source,bidder_name,amount").eq("item_number",data.item_number).eq("amount",data.current_bid).order("id",{ascending:false}).limit(1).maybeSingle();
+   const {data:winBids}=await sb.from("bids").select("bidder_email,bidder_address,bidder_age,source,bidder_name,amount,id").eq("item_number",data.item_number).order("id",{ascending:false}).limit(50);
+   const winBid=(winBids||[]).find(b => Number(b.amount)===Number(data.current_bid) && String(b.bidder_name||"").trim()===String(winner).trim()) || (winBids||[]).find(b => Number(b.amount)===Number(data.current_bid));
    if(winBid){ if(winBid.bidder_email) email=winBid.bidder_email; if(winBid.bidder_address) address=winBid.bidder_address; if(winBid.bidder_age!==null && winBid.bidder_age!==undefined) age=String(winBid.bidder_age); if(winBid.source) source=String(winBid.source).toUpperCase(); }
  }
  const finalSourceLabel = source === "OFFLINE" ? "🔴 OFFLINE" : source === "ONLINE" ? "🟢 ONLINE" : "⚪ "+source;

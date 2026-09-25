@@ -187,7 +187,7 @@ begin
  if length(v_name)<2 then return jsonb_build_object('ok',false,'message','Could not determine your name.'); end if;
  if p_source='online' and length(v_address)<5 then return jsonb_build_object('ok',false,'message','Please provide your address.'); end if;
  if p_amount<=a.current_bid then return jsonb_build_object('ok',false,'message','Your bid must be higher than ₹'||to_char(a.current_bid,'FM9999999990.00')); end if;
- update public.auction_state set current_bid=p_amount,highest_bidder=v_name||'|||'||coalesce(v_email,'')||'|||'||v_address,highest_bid_source=p_source,updated_at=now() where id=1;
+ update public.auction_state set current_bid=p_amount,highest_bidder=v_name||'|||'||coalesce(v_email,'')||'|||'||v_address||'|||'||coalesce(p_bidder_age::text,''),highest_bid_source=p_source,updated_at=now() where id=1;
  insert into public.bids(item_number,item_name,bidder_name,amount,source,auth_user_id,bidder_email,bidder_address,bidder_age) values(p_item_number,a.item_name,v_name,p_amount,p_source,v_user_id,v_email,v_address,p_bidder_age);
  return jsonb_build_object('ok',true,'message','Bid accepted.');
 end; $$;

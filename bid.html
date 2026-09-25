@@ -28,6 +28,7 @@
     <div id="currentBid" class="big">₹0</div>
     <div id="highest">No bidder</div>
     <span id="status" class="status">WAITING</span>
+    <div id="autoRefreshStatus" class="small muted" style="margin-top:6px">🔄 LIVE SYNC • AUTO REFRESH ON</div>
   </div>
 
   <div class="card bid-live-card">
@@ -95,7 +96,7 @@ async function init(){
  await refresh();
  setupCameraViewer();
  channel=sb.channel("auction-live").on("postgres_changes",{event:"UPDATE",schema:"public",table:"auction_state",filter:"id=eq.1"},refresh).subscribe();
- setInterval(refresh,1000);
+ startAutomaticBiddingRefresh();
 
  sb.auth.onAuthStateChange((_event, newSession)=>{
    if(newSession){
@@ -106,6 +107,36 @@ async function init(){
      showGoogleLogin();
    }
  });
+}
+
+let biddingRefreshTimer=null;
+let biddingPageReloadTimer=null;
+let biddingRefreshBusy=false;
+
+function startAutomaticBiddingRefresh(){
+  if(biddingRefreshTimer) clearInterval(biddingRefreshTimer);
+  if(biddingPageReloadTimer) clearInterval(biddingPageReloadTimer);
+
+  // Keep auction state synchronized every second without interrupting typing.
+  biddingRefreshTimer=setInterval(async ()=>{
+    if(document.hidden || biddingRefreshBusy || !sb) return;
+    biddingRefreshBusy=true;
+    try{ await refresh(); }
+    catch(e){ console.warn("Automatic bidding refresh failed",e); }
+    finally{ biddingRefreshBusy=false; }
+  },1000);
+
+  // Also perform a full page refresh periodically. This recovers from stale
+  // browser state/network connections, but never interrupts an active input.
+  biddingPageReloadTimer=setInterval(()=>{
+    if(document.hidden || !sb) return;
+    const active=document.activeElement;
+    const typing=active && (active.tagName==='INPUT' || active.tagName==='TEXTAREA' || active.isContentEditable);
+    const overlay=document.getElementById('soldOverlay');
+    const soldVisible=overlay && overlay.classList.contains('show');
+    if(typing || soldVisible) return;
+    window.location.reload();
+  },120000);
 }
 
 function showGoogleLogin(){
@@ -197,13 +228,14 @@ async function refresh(){
  document.getElementById("soldOverlay").classList.toggle("show", sold);
  const parts = String(data.highest_bidder || "").split("|||");
  const winner = parts[0] || "Winner";
- const email = parts[1] || "";
- const address = parts[2] || String(data.bidder_address||"") || "";
- let age = (data.bidder_age!==null && data.bidder_age!==undefined && data.bidder_age!=="") ? String(data.bidder_age) : "Not provided";
+ let email = parts[1] || "";
+ let address = parts[2] || String(data.bidder_address||"") || "";
+ let age = (parts[3]!==undefined && parts[3]!=="") ? String(parts[3]) : ((data.bidder_age!==null && data.bidder_age!==undefined && data.bidder_age!=="") ? String(data.bidder_age) : "Not provided");
  let source = String(data.highest_bid_source||"").toUpperCase() || "NOT PROVIDED";
  const setText=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v||"Not provided"};
  if(sold){
-   const {data:winBid}=await sb.from("bids").select("bidder_email,bidder_address,bidder_age,source,bidder_name,amount").eq("item_number",data.item_number).eq("amount",data.current_bid).order("id",{ascending:false}).limit(1).maybeSingle();
+   const {data:winBids}=await sb.from("bids").select("bidder_email,bidder_address,bidder_age,source,bidder_name,amount,id").eq("item_number",data.item_number).order("id",{ascending:false}).limit(50);
+   const winBid=(winBids||[]).find(b => Number(b.amount)===Number(data.current_bid) && String(b.bidder_name||"").trim()===String(winner).trim()) || (winBids||[]).find(b => Number(b.amount)===Number(data.current_bid));
    if(winBid){ if(winBid.bidder_email) email=winBid.bidder_email; if(winBid.bidder_address) address=winBid.bidder_address; if(winBid.bidder_age!==null && winBid.bidder_age!==undefined) age=String(winBid.bidder_age); if(winBid.source) source=String(winBid.source).toUpperCase(); }
  }
  const finalSourceLabel = source === "OFFLINE" ? "🔴 OFFLINE" : source === "ONLINE" ? "🟢 ONLINE" : "⚪ "+source;
