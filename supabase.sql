@@ -194,6 +194,21 @@ end; $$;
 revoke execute on function public.place_bid(integer,text,numeric,text,integer,text) from public, anon;
 grant execute on function public.place_bid(integer,text,numeric,text,integer,text) to authenticated;
 
+-- Clear the latest Under-18 notification record.
+drop function if exists public.clear_latest_age_limit_notification();
+create or replace function public.clear_latest_age_limit_notification()
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare v_id bigint;
+begin
+  if auth.uid() is null then return jsonb_build_object('ok',false,'message','Admin login required.'); end if;
+  select id into v_id from public.underage_bidding_attempts order by attempted_at desc,id desc limit 1;
+  if v_id is null then return jsonb_build_object('ok',true,'deleted',0,'message','No age-limit notification found.'); end if;
+  delete from public.underage_bidding_attempts where id=v_id;
+  return jsonb_build_object('ok',true,'deleted',1,'id',v_id,'message','Age-limit notification cleared.');
+end; $$;
+revoke execute on function public.clear_latest_age_limit_notification() from public,anon;
+grant execute on function public.clear_latest_age_limit_notification() to authenticated;
+
 -- Under-18 attempt deletion RPCs.
 drop function if exists public.delete_underage_bidding_attempt(bigint);
 create or replace function public.delete_underage_bidding_attempt(p_id bigint) returns jsonb language plpgsql security definer set search_path=public as $$
@@ -201,5 +216,5 @@ begin if auth.uid() is null then return jsonb_build_object('ok',false,'message',
 revoke execute on function public.delete_underage_bidding_attempt(bigint) from public,anon; grant execute on function public.delete_underage_bidding_attempt(bigint) to authenticated;
 drop function if exists public.delete_all_underage_bidding_attempts();
 create or replace function public.delete_all_underage_bidding_attempts() returns jsonb language plpgsql security definer set search_path=public as $$
-begin if auth.uid() is null then return jsonb_build_object('ok',false,'message','Admin login required.'); end if; delete from public.underage_bidding_attempts; return jsonb_build_object('ok',true,'message','All under-18 attempts deleted.'); end; $$;
+begin if auth.uid() is null then return jsonb_build_object('ok',false,'message','Admin login required.'); end if; delete from public.underage_bidding_attempts where id is not null; return jsonb_build_object('ok',true,'message','All under-18 attempts deleted.'); end; $$;
 revoke execute on function public.delete_all_underage_bidding_attempts() from public,anon; grant execute on function public.delete_all_underage_bidding_attempts() to authenticated;

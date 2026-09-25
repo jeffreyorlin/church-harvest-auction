@@ -213,44 +213,46 @@ async function loadUnderageAttempts(){
  box.innerHTML=data.map(x=>`<div class="history-row"><div><b>${esc(x.name)}</b> — age ${esc(x.age)}<br><span class="muted">${esc(x.address||"")} • ${new Date(x.attempted_at).toLocaleString("en-IN")}</span></div><button class="danger small-btn" onclick="deleteUnderageAttempt(${Number(x.id)})">DELETE</button></div>`).join("");
 }
 
-function clearAgeLimitNotification(){
+async function clearAgeLimitNotification(){
  const notice=document.getElementById("underageNotice");
  const btn=document.getElementById("clearAgeNoticeBtn");
- const rows=document.querySelectorAll("#underageHistory .history-row");
- // Store the latest attempt ID so realtime refreshes cannot immediately recreate the alert.
- const firstRow=rows[0];
- let latestId=null;
- if(firstRow){
-   const del=firstRow.querySelector("button[onclick^=\"deleteUnderageAttempt\"]");
-   const m=del && del.getAttribute("onclick").match(/deleteUnderageAttempt\((\d+)\)/);
-   if(m) latestId=m[1];
+ if(!sb){showMsg("Supabase is not connected.");return;}
+ if(!confirm("Clear the current Under-18 age-limit notification?"))return;
+ if(notice)notice.classList.add("hidden");
+ if(btn)btn.classList.add("hidden");
+ const {data,error}=await sb.rpc("clear_latest_age_limit_notification");
+ if(error){
+   console.error(error);
+   await loadUnderageAttempts();
+   showMsg("Unable to clear age-limit notification: "+error.message);
+   return;
  }
- if(latestId) localStorage.setItem("churchAuctionAgeNoticeClearedId",latestId);
- if(notice) notice.classList.add("hidden");
- if(btn) btn.classList.add("hidden");
- showMsg("Age-limit notification cleared. It will appear again only for a new Under-18 attempt.",true);
+ if(!data?.ok){
+   await loadUnderageAttempts();
+   showMsg(data?.message||"Unable to clear age-limit notification.");
+   return;
+ }
+ localStorage.removeItem("churchAuctionAgeNoticeClearedId");
+ await loadUnderageAttempts();
+ showMsg("Age-limit notification cleared successfully.",true);
 }
 async function deleteUnderageAttempt(id){
- if(!confirm("Delete this under-18 bidding attempt?")) return;
- let {error}=await sb.from("underage_bidding_attempts").delete().eq("id",id);
- if(error){
-   const rpc=await sb.rpc("delete_underage_bidding_attempt",{p_id:id});
-   error=rpc.error || (rpc.data && !rpc.data.ok ? new Error(rpc.data.message||"Delete failed") : null);
- }
+ if(!confirm("Delete this under-18 bidding attempt?"))return;
+ if(!sb){showMsg("Supabase is not connected.");return;}
+ const {data,error}=await sb.rpc("delete_underage_bidding_attempt",{p_id:Number(id)});
  if(error){showMsg("Unable to delete under-18 attempt: "+error.message);return;}
- const clearedId=localStorage.getItem("churchAuctionAgeNoticeClearedId");
- if(clearedId===String(id)) localStorage.removeItem("churchAuctionAgeNoticeClearedId");
+ if(!data?.ok){showMsg(data?.message||"Unable to delete under-18 attempt.");return;}
+ localStorage.removeItem("churchAuctionAgeNoticeClearedId");
  await loadUnderageAttempts();
  showMsg("Under-18 attempt deleted.",true);
 }
 async function deleteAllUnderageAttempts(){
- if(!confirm("Delete ALL recorded under-18 bidding attempts? This cannot be undone.")) return;
- let {error}=await sb.from("underage_bidding_attempts").delete().neq("id",-1);
- if(error){
-   const rpc=await sb.rpc("delete_all_underage_bidding_attempts");
-   error=rpc.error || (rpc.data && !rpc.data.ok ? new Error(rpc.data.message||"Delete failed") : null);
- }
+ if(!confirm("Delete ALL recorded under-18 bidding attempts? This cannot be undone."))return;
+ if(!sb){showMsg("Supabase is not connected.");return;}
+ const {data,error}=await sb.rpc("delete_all_underage_bidding_attempts");
  if(error){showMsg("Unable to delete under-18 attempts: "+error.message);return;}
+ if(!data?.ok){showMsg(data?.message||"Unable to delete under-18 attempts.");return;}
+ localStorage.removeItem("churchAuctionAgeNoticeClearedId");
  await loadUnderageAttempts();
  showMsg("All under-18 bidding attempts deleted.",true);
 }

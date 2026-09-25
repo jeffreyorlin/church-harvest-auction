@@ -80,7 +80,8 @@ begin
   if auth.uid() is null then
     return jsonb_build_object('ok', false, 'message', 'Admin login required.');
   end if;
-  delete from public.bids;
+  -- Explicit WHERE clause is required by the Supabase DELETE safety policy.
+  delete from public.bids where id is not null;
   return jsonb_build_object('ok', true, 'message', 'Bidding history cleared.');
 end;
 $$;
@@ -207,7 +208,8 @@ set search_path=public
 as $$
 begin
   if auth.uid() is null then return jsonb_build_object('ok',false,'message','Admin login required.'); end if;
-  delete from public.underage_bidding_attempts;
+  -- Explicit WHERE clause is required by the Supabase DELETE safety policy.
+  delete from public.underage_bidding_attempts where id is not null;
   return jsonb_build_object('ok',true,'message','All under-18 attempts deleted.');
 end;
 $$;
