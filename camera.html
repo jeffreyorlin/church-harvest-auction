@@ -108,7 +108,10 @@ document.body.classList.add('camera-locked');
       </div>
       <div class="camera-rotation-row">
         <span>🔄 ROTATION</span>
-        <button type="button" id="rotateCycleBtn" class="rotationBtn active">🔄 CAMERA 0°</button>
+        <button type="button" class="rotationBtn active" data-rotation="0">CAMERA 0°</button>
+        <button type="button" class="rotationBtn" data-rotation="90">CAMERA 90°</button>
+        <button type="button" class="rotationBtn" data-rotation="180">CAMERA 180°</button>
+        <button type="button" class="rotationBtn" data-rotation="270">CAMERA 270°</button>
       </div>
     </div>
     <p id="camMsg" class="small muted">Point this phone at the product. Keep this page open during the auction.</p>
@@ -240,12 +243,8 @@ function setRotation(rotation, broadcast=true){
   cameraRotation=((Number(rotation)%360)+360)%360;
   const preview=document.getElementById('preview');
   if(preview) preview.style.transform=`rotate(${cameraRotation}deg) scale(${cameraZoom})`;
-  const btn=document.getElementById('rotateCycleBtn');
-  if(btn){btn.textContent=`🔄 CAMERA ${cameraRotation}°`;btn.classList.add('active');}
+  document.querySelectorAll('.rotationBtn').forEach(b=>b.classList.toggle('active',Number(b.dataset.rotation)===cameraRotation));
   if(broadcast) broadcastCameraSettings();
-}
-function cycleRotation(){
-  setRotation((cameraRotation+90)%360);
 }
 function broadcastCameraSettings(){
   if(!channel)return;
@@ -291,8 +290,7 @@ function initCameraControls(){
   range.oninput=()=>applyZoom(range.value);
   num.onchange=()=>applyZoom(num.value);
   num.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();applyZoom(num.value)}};
-  const rotateBtn=document.getElementById('rotateCycleBtn');
-  if(rotateBtn) rotateBtn.onclick=cycleRotation;
+  document.querySelectorAll('.rotationBtn').forEach(btn=>btn.onclick=()=>setRotation(btn.dataset.rotation));
   updateZoomUI(cameraZoom);
   if(controls) controls.classList.remove('hidden');
 }
@@ -529,8 +527,11 @@ async function startCamera(){
       cameraZoom=Math.min(zmax,Math.max(zmin,1));
       await applyZoom(cameraZoom,false);
     }else{
-      if(range){range.disabled=true;} if(num){num.disabled=true;}
-      cameraZoom=1; updateZoomUI(1);
+      if(range){range.min=1;range.max=4;range.disabled=false;}
+      if(num){num.min=1;num.max=4;num.disabled=false;}
+      cameraZoom=Math.min(4,Math.max(1,cameraZoom));
+      updateZoomUI(cameraZoom);
+      if(preview) preview.style.transform=`rotate(${cameraRotation}deg) scale(${cameraZoom})`;
     }
     if(controls) controls.classList.remove('hidden');
     setRotation(cameraRotation,false);
@@ -646,9 +647,6 @@ async function switchCamera(){
     }
 
     stream=newStream;
-    localCameraStream=newStream;
-    activeSource='local';
-    activeRemoteLens=0;
     preview.srcObject=newStream;
     try{await preview.play();}catch(_){ }
 

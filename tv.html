@@ -16,7 +16,7 @@
         <option value="30000">30 sec</option>
       </select>
       <div class="tv-rotation-controls" aria-label="TV camera rotation"><span>ROTATE:</span><button type="button" data-rot="0" onclick="setTvRotation(0)">0°</button><button type="button" data-rot="90" onclick="setTvRotation(90)">90°</button><button type="button" data-rot="180" onclick="setTvRotation(180)">180°</button><button type="button" data-rot="270" onclick="setTvRotation(270)">270°</button></div>
-      <button id="recordTvBtn" onclick="toggleTvRecording()">⏺ RECORD TV</button><button onclick="toggleFullscreen()">⛶ FULLSCREEN</button>
+      <button onclick="toggleFullscreen()">⛶ FULLSCREEN</button>
     </div>
   </div>
   <div id="setupArea"></div>
@@ -47,41 +47,6 @@
 <script>
 const DEFAULT_CONFIG_KEY = "churchAuctionConfig";
 const EMBEDDED_CONFIG = {url:"https://dcgtufrwqvuuyrlouepu.supabase.co",key:"sb_publishable_MZGvLkvhFDRt5tAri_rz6g_WThNuujt"};
-
-let tvRecorder=null;
-let tvRecordChunks=[];
-async function toggleTvRecording(){
-  const btn=document.getElementById('recordTvBtn');
-  if(tvRecorder && tvRecorder.state==='recording'){
-    tvRecorder.stop();
-    if(btn)btn.textContent='⏺ RECORD TV';
-    return;
-  }
-  try{
-    if(!navigator.mediaDevices?.getDisplayMedia) throw new Error('Screen recording is not supported by this browser.');
-    const capture=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:30},audio:false});
-    tvRecordChunks=[];
-    const mime=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(x=>MediaRecorder.isTypeSupported(x));
-    tvRecorder=new MediaRecorder(capture,mime?{mimeType:mime}:undefined);
-    tvRecorder.ondataavailable=e=>{if(e.data&&e.data.size)tvRecordChunks.push(e.data);};
-    tvRecorder.onstop=()=>{
-      capture.getTracks().forEach(t=>t.stop());
-      const blob=new Blob(tvRecordChunks,{type:tvRecorder?.mimeType||'video/webm'});
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
-      a.download='church-auction-tv-'+new Date().toISOString().replace(/[:.]/g,'-')+'.webm';
-      a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-      tvRecordChunks=[];
-      tvRecorder=null;
-    };
-    capture.getVideoTracks()[0].onended=()=>{if(tvRecorder&&tvRecorder.state==='recording')tvRecorder.stop();};
-    tvRecorder.start(1000);
-    if(btn)btn.textContent='⏹ STOP & SAVE';
-  }catch(e){
-    alert('TV recording could not start: '+(e.message||e.name||String(e)));
-  }
-}
 
 function getConfig(){
  try{const saved=JSON.parse(localStorage.getItem(DEFAULT_CONFIG_KEY)||"{}");return saved.url&&saved.key?saved:EMBEDDED_CONFIG;}
