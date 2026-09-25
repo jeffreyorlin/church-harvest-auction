@@ -1,6 +1,8 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Church Auction TV</title><link rel="stylesheet" href="style.css"></head><style>#tvPinGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;font-family:Arial,sans-serif}#tvPinGate .box{width:min(92vw,380px);padding:28px;border-radius:16px;background:#222;text-align:center}#tvPinGate input{width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #555;background:#111;color:#fff;font-size:24px;text-align:center;letter-spacing:8px}#tvPinGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700}.tv-locked>*:not(#tvPinGate){visibility:hidden}</style><div id="tvPinGate"><div class="box"><h2>🔐 TV Display</h2><p>Enter the 4-digit TV PIN</p><input id="tvPinInput" type="password" inputmode="numeric" maxlength="4" autofocus><button id="tvPinBtn">Unlock TV</button><div id="tvPinErr"></div></div></div><script>document.body.classList.add('tv-locked');(()=>{const P='1206',g=document.getElementById('tvPinGate'),i=document.getElementById('tvPinInput'),b=document.getElementById('tvPinBtn'),e=document.getElementById('tvPinErr');function u(){if(i.value===P){sessionStorage.setItem('churchAuctionTvUnlocked','1');g.remove();document.body.classList.remove('tv-locked')}else{e.textContent='Incorrect PIN';i.value='';i.focus()}}b.onclick=u;i.onkeydown=x=>{if(x.key==='Enter')u()};if(sessionStorage.getItem('churchAuctionTvUnlocked')==='1'){g.remove();document.body.classList.remove('tv-locked')}})();</script>
+<title>Church Auction TV</title><link rel="stylesheet" href="style.css"></head><style>
+.sold-private-field.hidden-offline{display:none!important}
+#tvPinGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;font-family:Arial,sans-serif}#tvPinGate .box{width:min(92vw,380px);padding:28px;border-radius:16px;background:#222;text-align:center}#tvPinGate input{width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #555;background:#111;color:#fff;font-size:24px;text-align:center;letter-spacing:8px}#tvPinGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700}.tv-locked>*:not(#tvPinGate){visibility:hidden}</style><div id="tvPinGate"><div class="box"><h2>🔐 TV Display</h2><p>Enter the 4-digit TV PIN</p><input id="tvPinInput" type="password" inputmode="numeric" maxlength="4" autofocus><button id="tvPinBtn">Unlock TV</button><div id="tvPinErr"></div></div></div><script>document.body.classList.add('tv-locked');(()=>{const P='1206',g=document.getElementById('tvPinGate'),i=document.getElementById('tvPinInput'),b=document.getElementById('tvPinBtn'),e=document.getElementById('tvPinErr');function u(){if(i.value===P){sessionStorage.setItem('churchAuctionTvUnlocked','1');g.remove();document.body.classList.remove('tv-locked')}else{e.textContent='Incorrect PIN';i.value='';i.focus()}}b.onclick=u;i.onkeydown=x=>{if(x.key==='Enter')u()};if(sessionStorage.getItem('churchAuctionTvUnlocked')==='1'){g.remove();document.body.classList.remove('tv-locked')}})();</script>
 <body class="tv-landscape">
 <div class="tv-shell">
   <div class="tv-brand-bar church-brand"><span class="brand-cross">✝️</span> CSI MEEETPAR YESU ALAYAM</div>
@@ -10,10 +12,10 @@
     <img class="sold-stamp" src="sold-out-stamp.png" alt="SOLD OUT">
     <div class="sold-details">
       <div class="sold-detail"><span class="label">SOLD OUT TO</span><span id="soldName">Winner</span></div>
-      <div class="sold-detail"><span class="label">AGE</span><span id="soldAge">Not provided</span></div>
+      <div class="sold-detail sold-private-field" id="soldAgeRow"><span class="label">AGE</span><span id="soldAge">Not provided</span></div>
       <div class="sold-detail"><span class="label">BID TYPE</span><span id="soldSource" class="sold-source-badge">🟢 ONLINE</span></div>
-      <div class="sold-detail"><span class="label">GMAIL / EMAIL</span><span id="soldGmail">Not provided</span></div>
-      <div class="sold-detail full"><span class="label">ADDRESS</span><span id="soldAddress">Not provided</span></div>
+      <div class="sold-detail sold-private-field" id="soldGmailRow"><span class="label">GMAIL / EMAIL</span><span id="soldGmail">Not provided</span></div>
+      <div class="sold-detail full sold-private-field" id="soldAddressRow"><span class="label">ADDRESS</span><span id="soldAddress">Not provided</span></div>
     </div>
     <div id="soldSub" class="sold-sub">SOLD OUT</div>
   </div>
@@ -131,7 +133,16 @@ async function refresh(){const {data,error}=await sb.from("auction_state").selec
    if(winBid){ if(winBid.bidder_email) email=winBid.bidder_email; if(winBid.bidder_address) address=winBid.bidder_address; if(winBid.bidder_age!==null && winBid.bidder_age!==undefined) age=String(winBid.bidder_age); if(winBid.source) source=String(winBid.source).toUpperCase(); }
  }
  const finalSourceLabel = source === "OFFLINE" ? "🔴 OFFLINE" : source === "ONLINE" ? "🟢 ONLINE" : "⚪ "+source;
- setText("soldName",winner); setText("soldAge",age); setText("soldSource",finalSourceLabel); setText("soldGmail",email||"Not provided"); setText("soldAddress",address||"Not provided");
+ setText("soldName",winner);
+ const isOffline = source === "OFFLINE";
+ setText("soldAge",age);
+ setText("soldSource",finalSourceLabel);
+ setText("soldGmail",email||"Not provided");
+ setText("soldAddress",address||"Not provided");
+ ["soldAgeRow","soldGmailRow","soldAddressRow"].forEach(id=>{
+   const el=document.getElementById(id);
+   if(el) el.classList.toggle("hidden-offline", isOffline);
+ });
  document.getElementById("soldSub").textContent=sold?`SOLD OUT TO ${winner} • ${money(data.current_bid)}`:"";
  if(sold) playSoldClap(`${data.item_number}|${data.current_bid}|${data.highest_bidder}|${data.status}`); else {lastSoldKey="";stopSoldClap();}
 }
