@@ -11,7 +11,7 @@
     <div class="sold-details">
       <div class="sold-detail"><span class="label">SOLD OUT TO</span><span id="soldName">Winner</span></div>
       <div class="sold-detail"><span class="label">AGE</span><span id="soldAge">Not provided</span></div>
-      <div class="sold-detail"><span class="label">BID TYPE</span><span id="soldSource">ONLINE</span></div>
+      <div class="sold-detail"><span class="label">BID TYPE</span><span id="soldSource" class="sold-source-badge">🟢 ONLINE</span></div>
       <div class="sold-detail"><span class="label">GMAIL / EMAIL</span><span id="soldGmail">Not provided</span></div>
       <div class="sold-detail full"><span class="label">ADDRESS</span><span id="soldAddress">Not provided</span></div>
     </div>
@@ -130,7 +130,8 @@ async function refresh(){const {data,error}=await sb.from("auction_state").selec
    const {data:winBid}=await sb.from("bids").select("bidder_email,bidder_address,bidder_age,source,bidder_name,amount").eq("item_number",data.item_number).eq("amount",data.current_bid).order("id",{ascending:false}).limit(1).maybeSingle();
    if(winBid){ if(winBid.bidder_email) email=winBid.bidder_email; if(winBid.bidder_address) address=winBid.bidder_address; if(winBid.bidder_age!==null && winBid.bidder_age!==undefined) age=String(winBid.bidder_age); if(winBid.source) source=String(winBid.source).toUpperCase(); }
  }
- setText("soldName",winner); setText("soldAge",age); setText("soldSource",source); setText("soldGmail",email||"Not provided"); setText("soldAddress",address||"Not provided");
+ const finalSourceLabel = source === "OFFLINE" ? "🔴 OFFLINE" : source === "ONLINE" ? "🟢 ONLINE" : "⚪ "+source;
+ setText("soldName",winner); setText("soldAge",age); setText("soldSource",finalSourceLabel); setText("soldGmail",email||"Not provided"); setText("soldAddress",address||"Not provided");
  document.getElementById("soldSub").textContent=sold?`SOLD OUT TO ${winner} • ${money(data.current_bid)}`:"";
  if(sold) playSoldClap(`${data.item_number}|${data.current_bid}|${data.highest_bidder}|${data.status}`); else {lastSoldKey="";stopSoldClap();}
 }

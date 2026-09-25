@@ -127,7 +127,8 @@ begin
   if auth.uid() is null then
     return jsonb_build_object('ok', false, 'message', 'Admin login required.');
   end if;
-  delete from public.bids;
+  -- Supabase delete safety requires an explicit WHERE clause.
+  delete from public.bids where id is not null;
   get diagnostics v_count = row_count;
   return jsonb_build_object('ok', true, 'deleted', v_count, 'message', 'Buyer history cleared.');
 end;
