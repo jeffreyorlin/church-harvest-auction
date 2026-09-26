@@ -35,6 +35,29 @@
     <h2 class="live-glow">📹 LIVE PRODUCT • CSI MEEETPAR YESU ALAYAM</h2>
     <video id="cameraVideo" class="cameraLive" autoplay playsinline controls></video>
     <div id="cameraStatus" class="cameraStatus muted">Waiting for church camera…</div>
+
+    <div id="liveSoundPanel" class="live-sound-panel">
+      <div class="live-sound-title">🔊 LIVE PRODUCT SOUND</div>
+      <div class="sound-row">
+        <label for="soundOutputMode">SOUND OUTPUT</label>
+        <select id="soundOutputMode" onchange="changeSoundOutput(this.value)">
+          <option value="internal">🔊 INTERNAL SPEAKER</option>
+          <option value="external">🔈 EXTERNAL SPEAKER</option>
+        </select>
+      </div>
+      <div class="sound-row">
+        <label for="liveVolume">VOLUME <span id="liveVolumeValue">100%</span></label>
+        <input id="liveVolume" type="range" min="0" max="100" value="100" step="1" oninput="setLiveVolume(this.value)">
+      </div>
+      <div class="sound-meter-wrap">
+        <span>VOLUME METER</span>
+        <div class="sound-meter" aria-label="Live product volume meter">
+          <div id="soundMeterFill" class="sound-meter-fill"></div>
+        </div>
+        <span id="soundMeterText">0%</span>
+      </div>
+      <div id="soundOutputStatus" class="small muted">Internal speaker selected</div>
+    </div>
   </div>
 
   <div id="profileCard" class="card">
@@ -65,6 +88,19 @@
   </div>
 </div></div>
 
+<style>
+.live-sound-panel{margin-top:12px;padding:14px 16px;border:1px solid rgba(20,75,130,.18);border-radius:14px;background:rgba(245,249,253,.96);box-shadow:0 4px 14px rgba(0,0,0,.06)}
+.live-sound-title{font-weight:800;font-size:1rem;margin-bottom:10px}
+.sound-row{display:flex;align-items:center;gap:12px;margin:9px 0;flex-wrap:wrap}
+.sound-row label{font-weight:700;min-width:130px}
+.sound-row select,.sound-row input[type=range]{flex:1;min-width:180px}
+.sound-row select{padding:9px 10px;border-radius:9px;border:1px solid #9ab7d3;background:#fff}
+.sound-row input[type=range]{accent-color:#0b4f8a}
+.sound-meter-wrap{display:flex;align-items:center;gap:10px;margin-top:10px;font-weight:700}
+.sound-meter{height:14px;flex:1;min-width:160px;background:#d9e3ec;border-radius:99px;overflow:hidden;border:1px solid #b8c9d8}
+.sound-meter-fill{height:100%;width:0%;transition:width .08s linear}
+@media(max-width:600px){.sound-row{display:block}.sound-row label{display:block;margin-bottom:5px}.sound-row select,.sound-row input[type=range]{width:100%;box-sizing:border-box}.sound-meter-wrap{flex-wrap:wrap}}
+</style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const DEFAULT_CONFIG_KEY = "churchAuctionConfig";
@@ -80,6 +116,163 @@ let bidderName="", bidderAddress="", bidderAge="", bidderEmail="";
 let lastSoldKey="";
 let soldAudioTimer=null;
 let pendingSoldSound=false;
+
+let liveVolume=1;
+let selectedOutputMode="internal";
+let selectedExternalOutputId="";
+let liveAudioContext=null;
+let liveAnalyser=null;
+let liveMeterAnimation=null;
+
+function getAudioElements(){
+  return [
+    document.getElementById("cameraVideo"),
+    document.getElementById("soldClapAudio")
+  ].filter(Boolean);
+}
+
+function setElementSink(el, deviceId){
+  if(!el || typeof el.setSinkId!=="function") return Promise.resolve(false);
+  return el.setSinkId(deviceId).then(()=>true).catch(err=>{
+    console.warn("Audio output selection failed:",err);
+    return false;
+  });
+}
+
+async function loadAudioOutputs(){
+  const select=document.getElementById("soundOutputMode");
+  if(!select) return;
+
+  // Browsers that support output-device routing can use a real external device.
+  if(!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices){
+    return;
+  }
+
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const outputs=devices.filter(d=>d.kind==="audiooutput");
+
+    // Keep simple INTERNAL / EXTERNAL choices in the visible control.
+    // Prefer a non-default output as EXTERNAL when one exists.
+    const external=outputs.find(d=>d.deviceId && d.deviceId!=="default");
+    selectedExternalOutputId=external?.deviceId || "";
+
+    if(external){
+      const label=external.label ? `🔈 EXTERNAL: ${external.label}` : "🔈 EXTERNAL SPEAKER";
+      const option=Array.from(select.options).find(o=>o.value==="external");
+      if(option) option.textContent=label;
+    }
+  }catch(err){
+    console.warn("Could not enumerate audio outputs:",err);
+  }
+}
+
+async function changeSoundOutput(mode){
+  selectedOutputMode=mode;
+  const status=document.getElementById("soundOutputStatus");
+
+  let sinkId="default";
+  if(mode==="external" && selectedExternalOutputId){
+    sinkId=selectedExternalOutputId;
+  }
+
+  let routed=false;
+  for(const el of getAudioElements()){
+    if(typeof el.setSinkId==="function"){
+      const ok=await setElementSink(el,sinkId);
+      routed=routed||ok;
+    }
+  }
+
+  if(status){
+    if(mode==="external"){
+      status.textContent = routed
+        ? "External speaker/output selected"
+        : "External output is not supported by this browser/device; using default output";
+    }else{
+      status.textContent = "Internal/default speaker selected";
+    }
+  }
+
+  localStorage.setItem("churchAuctionSoundOutput",mode);
+}
+
+function setLiveVolume(value){
+  const v=Math.max(0,Math.min(100,Number(value)||0));
+  liveVolume=v/100;
+  const video=document.getElementById("cameraVideo");
+  const clap=document.getElementById("soldClapAudio");
+  if(video) video.volume=liveVolume;
+  if(clap) clap.volume=liveVolume;
+
+  const label=document.getElementById("liveVolumeValue");
+  if(label) label.textContent=`${v}%`;
+  localStorage.setItem("churchAuctionLiveVolume",String(v));
+}
+
+function startLiveVolumeMeter(){
+  const video=document.getElementById("cameraVideo");
+  if(!video || liveMeterAnimation) return;
+
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC) return;
+
+  try{
+    liveAudioContext=new AC();
+    const source=liveAudioContext.createMediaElementSource(video);
+    liveAnalyser=liveAudioContext.createAnalyser();
+    liveAnalyser.fftSize=256;
+    source.connect(liveAnalyser);
+    liveAnalyser.connect(liveAudioContext.destination);
+
+    const data=new Uint8Array(liveAnalyser.frequencyBinCount);
+    const draw=()=>{
+      if(!liveAnalyser) return;
+      liveAnalyser.getByteFrequencyData(data);
+      let sum=0;
+      for(const n of data) sum+=n*n;
+      const rms=Math.sqrt(sum/data.length)/255;
+      const pct=Math.max(0,Math.min(100,Math.round(rms*150)));
+      const fill=document.getElementById("soundMeterFill");
+      const text=document.getElementById("soundMeterText");
+      if(fill) fill.style.width=pct+"%";
+      if(text) text.textContent=pct+"%";
+      liveMeterAnimation=requestAnimationFrame(draw);
+    };
+    draw();
+  }catch(err){
+    console.warn("Live volume meter unavailable:",err);
+  }
+}
+
+async function unlockLiveAudio(){
+  try{
+    if(liveAudioContext && liveAudioContext.state==="suspended"){
+      await liveAudioContext.resume();
+    }
+  }catch(e){}
+}
+
+window.addEventListener("load",async()=>{
+  const savedVol=Number(localStorage.getItem("churchAuctionLiveVolume"));
+  const slider=document.getElementById("liveVolume");
+  if(Number.isFinite(savedVol) && slider){
+    slider.value=Math.max(0,Math.min(100,savedVol));
+  }
+  setLiveVolume(slider?.value ?? 100);
+
+  const savedMode=localStorage.getItem("churchAuctionSoundOutput")||"internal";
+  const select=document.getElementById("soundOutputMode");
+  if(select) select.value=savedMode;
+  selectedOutputMode=savedMode;
+
+  await loadAudioOutputs();
+  await changeSoundOutput(savedMode);
+
+  ["pointerdown","keydown","touchstart"].forEach(ev=>{
+    document.addEventListener(ev,unlockLiveAudio,{passive:true});
+  });
+});
 
 // Play the uploaded clapping sound at full volume for exactly 5 seconds.
 function playSoldClap(key){
@@ -332,7 +525,7 @@ async function setupCameraViewer(){
    camPeer=new RTCPeerConnection({iceServers:CAMERA_ICE_SERVERS});
    cameraPendingIce=[];
    camPeer.onconnectionstatechange=()=>{if(camPeer.connectionState==='failed'){document.getElementById('cameraStatus').textContent='⚠️ LIVE CAMERA CONNECTION LOST — reconnecting...'; setTimeout(()=>setupCameraViewer(),1500);}};
-   camPeer.ontrack=e=>{document.getElementById('cameraVideo').srcObject=e.streams[0];document.getElementById('cameraStatus').textContent='🔴 LIVE PRODUCT CAMERA';};
+   camPeer.ontrack=e=>{const v=document.getElementById('cameraVideo');v.srcObject=e.streams[0];v.volume=liveVolume;document.getElementById('cameraStatus').textContent='🔴 LIVE PRODUCT CAMERA';setTimeout(()=>{startLiveVolumeMeter();changeSoundOutput(selectedOutputMode);},100);};
    camPeer.onicecandidate=e=>{if(e.candidate)camChannel.send({type:'broadcast',event:'ice',payload:{id:viewerId,candidate:e.candidate}})};
    await camPeer.setRemoteDescription(payload.description); for(const c of cameraPendingIce){await camPeer.addIceCandidate(c).catch(()=>{});} cameraPendingIce=[]; const ans=await camPeer.createAnswer();await camPeer.setLocalDescription(ans);
    await camChannel.send({type:'broadcast',event:'answer',payload:{id:viewerId,description:camPeer.localDescription}});
