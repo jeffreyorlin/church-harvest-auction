@@ -140,7 +140,8 @@ document.body.classList.add('camera-locked');
         <button type="button" id="muteExternalBtn" onclick="toggleCameraMute('external')">🔊 MUTE EXTERNAL</button>
       </div>
       <div class="camera-meter-wrap"><span>VOLUME METER</span><div class="camera-meter"><div id="cameraMeterFill" class="camera-meter-fill"></div></div><span id="cameraMeterText">0%</span></div>
-      <div id="cameraSoundOutputStatus" class="small muted">USB mixer/sound-card input → phone internal speaker</div>
+      <div id="cameraSoundOutputStatus" class="small muted">USB mixer/sound-card input → selected system output. On Android, the phone controls the physical speaker/USB output route.</div>
+      <div class="small muted" style="margin-top:7px">🎚️ For mixer audio: connect MIXER OUT → USB SOUND CARD IN → USB/OTG → phone, then select the USB sound card under SOUND INPUT. If the USB sound card appears under SOUND OUTPUT, select it there too.</div>
     </div>
     <div id="cameraControls" class="camera-controls hidden">
       <div style="font-weight:900;margin-bottom:8px">🔍 ZOOM — INTEGRATED DEVICE CAMERA ONLY</div>
@@ -394,6 +395,7 @@ window.changeCameraAudioInput=async function(id){
   if(st)st.textContent=cameraAudioInputId?'🎚️ USB mixer/sound-card selected → 🔊 phone internal speaker. Restart camera to apply the new input.':'🎙️ Default phone audio input → 🔊 phone internal speaker. Restart camera to apply.';
 };
 window.refreshCameraAudioInputs=refreshCameraAudioInputs;
+if(navigator.mediaDevices?.addEventListener){ navigator.mediaDevices.addEventListener('devicechange',()=>{refreshCameraAudioInputs();refreshCameraAudioOutputs();}); }
 window.enableLensAudio=async function(){
   const v=document.getElementById('preview');
   if(!v)return;
@@ -416,18 +418,25 @@ window.enableLensAudio=async function(){
 async function changeCameraSoundOutput(mode){
   cameraOutputMode=mode||'default';
   const v=document.getElementById('preview');
+  let routed=false;
   if(v){
-    v.muted=!!cameraMuted.internal;
+    v.muted=false;
+    v.volume=Math.max(0,Math.min(1,cameraLiveVolume||1));
     if(typeof v.setSinkId==='function'){
-      try{await v.setSinkId(cameraOutputMode==='default'?'default':cameraOutputMode);}
-      catch(e){console.warn('USB/system audio output routing unavailable:',e);}
+      try{
+        await v.setSinkId(cameraOutputMode==='default'?'default':cameraOutputMode);
+        routed=true;
+      }catch(e){console.warn('Selected audio output cannot be assigned by this browser:',e);}
     }
+    try{ if(v.paused && v.srcObject) await v.play(); }catch(e){}
   }
   const sel=document.getElementById('cameraAudioOutput');
   if(sel)sel.value=cameraOutputMode;
   const st=document.getElementById('cameraSoundOutputStatus');
   const out=sel?.selectedOptions?.[0]?.textContent||'🔊 DEFAULT / SYSTEM / PHONE OUTPUT';
-  if(st)st.textContent=(cameraAudioInputId?'🎚️ USB mixer/sound-card INPUT':'🎙️ Default INPUT')+' → '+out;
+  if(st){
+    st.textContent=(cameraAudioInputId?'🎚️ USB mixer/sound-card INPUT':'🎙️ Default INPUT')+' → '+out+(routed?' ✓':'');
+  }
   updateCameraMuteButtons();
   localStorage.setItem('churchAuctionCameraSoundOutput',cameraOutputMode);
 }
@@ -766,6 +775,7 @@ async function startCamera(){
     preview.srcObject=stream;
     try{ await preview.play(); }catch(_){ }
     startCameraVolumeMeter(stream);
+    await changeCameraSoundOutput(cameraOutputMode);
 
     // Re-apply Full HD + 30 FPS when supported. Exact constraints are used so
     // the browser does not silently settle at 1280×720 when 1080p is available.
