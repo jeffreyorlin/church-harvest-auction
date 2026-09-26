@@ -94,8 +94,8 @@ document.body.classList.add('camera-locked');
         <p id="scannerMsg" class="small muted">Point the phone/laptop camera at a Lens 1 or Lens 2 QR code.</p>
         <button type="button" onclick="stopLensScanner()">STOP SCANNER</button>
       </div>
-      <div id="remoteLens1" class="remote-lens-card"><strong>Lens 1</strong><span class="muted">Waiting for phone…</span><button class="hidden" onclick="useRemoteLens(1)">SWITCH TO LENS 1</button></div>
-      <div id="remoteLens2" class="remote-lens-card"><strong>Lens 2</strong><span class="muted">Waiting for phone…</span><button class="hidden" onclick="useRemoteLens(2)">SWITCH TO LENS 2</button></div>
+      <div id="remoteLens1" class="remote-lens-card"><strong>Lens 1</strong><span class="muted">Waiting for phone…</span><button class="hidden" onclick="useRemoteLens(1,true)">SWITCH TO LENS 1</button></div>
+      <div id="remoteLens2" class="remote-lens-card"><strong>Lens 2</strong><span class="muted">Waiting for phone…</span><button class="hidden" onclick="useRemoteLens(2,true)">SWITCH TO LENS 2</button></div>
       <div class="mobile-camera-tip small muted">💡 On a phone, use Chrome/Safari and allow camera permission. Keep the phone on the Lens page while connected.</div>
     </div>
     <div id="dualCameraPanel" class="dual-camera-panel hidden">
@@ -200,7 +200,7 @@ async function init(){
       .on('broadcast',{event:'answer'},async ({payload})=>{const pc=peers.get(payload.id);if(pc){try{await pc.setRemoteDescription(payload.description);const q=pendingIce.get(payload.id)||[];for(const c of q)await pc.addIceCandidate(c).catch(()=>{});pendingIce.delete(payload.id);}catch(e){console.warn('Remote description failed',e)}}})
       .on('broadcast',{event:'ice'},async ({payload})=>{const pc=peers.get(payload.id);if(!payload.candidate||!pc)return;try{if(pc.remoteDescription)await pc.addIceCandidate(payload.candidate);else{const q=pendingIce.get(payload.id)||[];q.push(payload.candidate);pendingIce.set(payload.id,q);}}catch(e){console.warn('ICE candidate ignored',e);}})
       .on('broadcast',{event:'lens-offer'},async ({payload})=>{ if(payload.target!=='main-camera') return; await acceptRemoteLensOffer(payload); })
-      .on('broadcast',{event:'lens-ice'},async ({payload})=>{ const lens=Number(payload.lens); const pc=remoteLensPeers.get(lens); if(!pc||!payload.candidate)return; try{ if(pc.remoteDescription) await pc.addIceCandidate(payload.candidate); else { const q=pendingRemoteLensIce.get(lens)||[]; q.push(payload.candidate); pendingRemoteLensIce.set(lens,q); } }catch(e){console.warn('Lens ICE ignored',e);} })
+      .on('broadcast',{event:'lens-ice'},async ({payload})=>{ const lens=Number(payload.lens); if(![1,2].includes(lens)||!payload.candidate)return; const pc=remoteLensPeers.get(lens); try{ if(!pc){ const q=pendingRemoteLensIce.get(lens)||[]; q.push(payload.candidate); pendingRemoteLensIce.set(lens,q); return; } if(pc.remoteDescription) await pc.addIceCandidate(payload.candidate); else { const q=pendingRemoteLensIce.get(lens)||[]; q.push(payload.candidate); pendingRemoteLensIce.set(lens,q); } }catch(e){console.warn('Lens ICE ignored',e);} })
       .on('broadcast',{event:'lens-close'},({payload})=>{ if(payload.lens) clearRemoteLens(payload.lens); })
       .subscribe(async status=>{ if(status==='SUBSCRIBED'){ generateLensQRCodes(); if(new URLSearchParams(location.search).has('lens')) setTimeout(startRemoteLensMode,400); } });
   }catch(e){
@@ -247,7 +247,7 @@ async function acceptRemoteLensOffer(payload){
     if(e.track && !st.getTracks().some(t=>t.id===e.track.id)) st.addTrack(e.track);
     updateRemoteLensUI(lens,true);
     const v=document.getElementById('preview');
-    if(e.track.kind==='video' && v) useRemoteLens(lens);
+    if(e.track.kind==='video' && v) useRemoteLens(lens,false);
   };
   try{
     await pc.setRemoteDescription(payload.offer);
@@ -260,7 +260,7 @@ async function acceptRemoteLensOffer(payload){
   }catch(e){ console.error('Lens connection failed',e); updateRemoteLensUI(lens,false); }
 }
 function updateRemoteLensUI(lens,on){const el=document.getElementById('remoteLens'+lens);if(!el)return;const span=el.querySelector('span');const b=el.querySelector('button');if(span){span.textContent=on?'🟢 Connected':'Waiting for phone…';span.className=on?'online':'';}if(b)b.classList.toggle('hidden',!on); updateTopLensStatus();}
-window.useRemoteLens=async lens=>{
+window.useRemoteLens=async (lens,enableAudio=false)=>{
   const st=remoteLensStreams.get(Number(lens));
   if(!st || !st.getVideoTracks().length)return;
   const track=st.getVideoTracks()[0];
@@ -269,10 +269,15 @@ window.useRemoteLens=async lens=>{
   if(preview){
     preview.srcObject=null;
     preview.srcObject=st;
-    preview.muted=false;
+    // Always start the remote video muted so browser autoplay policy cannot
+    // block the LIVE PRODUCT picture. Audio can then be enabled by the user.
+    preview.muted=!enableAudio;
     preview.volume=cameraLiveVolume>0?cameraLiveVolume:1;
     preview.setAttribute('playsinline','');
     await preview.play().catch(e=>console.warn('Lens preview play failed',e));
+    if(enableAudio){
+      try{ await enableLensAudio(); }catch(_){ }
+    }
   }
   for(const pc of peers.values()){const sender=pc.getSenders().find(x=>x.track?.kind==='video');if(sender)await sender.replaceTrack(track).catch(()=>{});}
   await refreshCameraControlsForTrack(track);
@@ -294,7 +299,7 @@ window.switchConnectedLens=async()=>{
   const available=[1,2].filter(n=>remoteLensStreams.has(n)&&remoteLensStreams.get(n)?.getVideoTracks().length);
   if(available.length<2){updateTopLensStatus(); return;}
   const next=activeRemoteLens===1?2:1;
-  await useRemoteLens(next);
+  await useRemoteLens(next,true);
 };
 
 window.toggleLensScanner=async()=>{const box=document.getElementById('lensScanner');if(box.classList.contains('show')){stopLensScanner();return;}box.classList.add('show');try{scannerStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});const v=document.getElementById('scannerVideo');v.srcObject=scannerStream;await v.play();scannerLoop();}catch(e){document.getElementById('scannerMsg').textContent='Scanner camera error: '+(e.message||e.name);}};
