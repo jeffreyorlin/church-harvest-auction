@@ -235,7 +235,8 @@ async function startRemoteLensMode(){
 async function acceptRemoteLensOffer(payload){
   const lens=Number(payload.lens); if(![1,2].includes(lens))return;
   if(remoteLensPeers.has(lens)) remoteLensPeers.get(lens).close();
-  pendingRemoteLensIce.set(lens,[]);
+  const queuedBeforePeer=pendingRemoteLensIce.get(lens)||[];
+  pendingRemoteLensIce.set(lens,queuedBeforePeer);
   const pc=new RTCPeerConnection({iceServers:ICE_SERVERS}); remoteLensPeers.set(lens,pc);
   pc.onicecandidate=e=>{if(e.candidate)channel?.send({type:'broadcast',event:'lens-ice',payload:{lens,candidate:e.candidate}})};
   pc.onconnectionstatechange=()=>{
@@ -247,7 +248,9 @@ async function acceptRemoteLensOffer(payload){
     if(e.track && !st.getTracks().some(t=>t.id===e.track.id)) st.addTrack(e.track);
     updateRemoteLensUI(lens,true);
     const v=document.getElementById('preview');
-    if(e.track.kind==='video' && v) useRemoteLens(lens,false);
+    if(e.track.kind==='video' && v){
+      useRemoteLens(lens,false).catch(err=>console.warn('LIVE PRODUCT lens video attach failed',err));
+    }
   };
   try{
     await pc.setRemoteDescription(payload.offer);
