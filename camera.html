@@ -65,6 +65,14 @@ document.body.classList.add('camera-locked');
   <div class="card center">
     <h2>Live Product Camera</h2>
     <video id="preview" autoplay playsinline></video>
+    <div class="camera-integrated-panel" style="margin:12px auto;max-width:900px;padding:12px;border:1px solid #33415f;border-radius:12px;background:#101b2c;text-align:center">
+      <div style="font-weight:900;margin-bottom:8px">📷 INTEGRATED DEVICE CAMERA</div>
+      <button type="button" id="startBtn" class="primary" onclick="startCamera()">▶ START INTEGRATED CAMERA</button>
+      <button type="button" id="switchBtn" onclick="switchCamera()" class="hidden">🔄 SWITCH DEVICE CAMERA</button>
+      <button type="button" id="stopBtn" onclick="stopCamera()" class="hidden">⏹ STOP INTEGRATED CAMERA</button>
+      <button type="button" id="mainLensSwitchBtn" onclick="cycleMainLens()" class="hidden">🔄 SWITCH CAMERA / LENS</button>
+      <div class="small muted" style="margin-top:7px">Integrated camera zoom is available here. Connected Lens 1/Lens 2 do not use zoom.</div>
+    </div>
     <div class="top-lens-switch">
       <button type="button" id="topLensSwitchBtn" class="primary" onclick="switchConnectedLens()">🔄 SWITCH LENS</button>
       <span id="topLensStatus" class="small muted">No lens selected</span>
@@ -143,7 +151,7 @@ document.body.classList.add('camera-locked');
         <button type="button" class="rotationBtn" data-rotation="270">CAMERA 270°</button>
       </div>
     </div>
-    <p class="small muted" style="margin-top:10px">🔗 Lens Connection uses the Zoom and Rotation controls. Zoom works from 1.0× to 4.0× for the connected Lens.</p>
+    <p class="small muted" style="margin-top:10px">🔍 Zoom 1.0×–4.0× is for the integrated device camera only. Lens 1/Lens 2 use rotation but no zoom.</p>
     <p id="camMsg" class="small muted">Point this phone at the product. Keep this page open during the auction.</p>
   </div>
 </div></div>
@@ -288,9 +296,15 @@ window.useRemoteLens=async (lens,enableAudio=false)=>{
     }
   }
   for(const pc of peers.values()){const sender=pc.getSenders().find(x=>x.track?.kind==='video');if(sender)await sender.replaceTrack(track).catch(()=>{});}
-  await refreshCameraControlsForTrack(track);
+  // Connected Lens: rotation is allowed, but zoom is intentionally disabled.
+  cameraZoom=1;
+  const zr=document.getElementById('zoomRange'), zn=document.getElementById('zoomNumber');
+  if(zr) zr.disabled=true;
+  if(zn) zn.disabled=true;
+  updateZoomUI(1);
+  const previewForLens=document.getElementById('preview');
+  if(previewForLens) previewForLens.style.transform=`rotate(${cameraRotation}deg) scale(1)`;
   setRotation(cameraRotation,false);
-  await applyZoom(cameraZoom,false);
   broadcastCameraSettings();
   startCameraVolumeMeter(st);
   const m=document.getElementById('camMsg');if(m)m.textContent='🔴 LIVE — REMOTE LENS '+lens;
@@ -411,7 +425,8 @@ function setRotation(rotation, broadcast=true){
 }
 function broadcastCameraSettings(){
   if(!channel)return;
-  channel.send({type:'broadcast',event:'camera-settings',payload:{zoom:Number(cameraZoom)||1,rotation:cameraRotation}}).catch(()=>{});
+  const z=(activeSource==='remote')?1:(Number(cameraZoom)||1);
+  channel.send({type:'broadcast',event:'camera-settings',payload:{zoom:z,rotation:cameraRotation}}).catch(()=>{});
 }
 function updateZoomUI(actual){
   const z=Number(actual)||1;
@@ -601,6 +616,12 @@ function stopDualCameras(){
   ['dualPreview1','dualPreview2'].forEach(id=>{const v=document.getElementById(id);if(v)v.srcObject=null;});
 }
 async function refreshCameraControlsForTrack(track){
+  if(activeSource==='remote'){
+    const range=document.getElementById('zoomRange'), num=document.getElementById('zoomNumber');
+    if(range) range.disabled=true; if(num) num.disabled=true;
+    updateZoomUI(1);
+    return;
+  }
   const caps=track&&track.getCapabilities?track.getCapabilities():{};
   const range=document.getElementById('zoomRange'),num=document.getElementById('zoomNumber');
   if(caps.zoom){
@@ -782,7 +803,7 @@ async function switchCamera(){
     // 3) Last fallback: ask for the opposite facing mode without exact constraints.
     if(!newStream){
       newStream=await navigator.mediaDevices.getUserMedia({
-        video:{facingMode:nextFacing},audio:false
+        video:{facingMode:nextFacing},audio:true
       });
       selected=nextFacing;
     }
@@ -840,7 +861,7 @@ async function switchCamera(){
     // Try to restore the previous camera if switching failed.
     try{
       stream=await navigator.mediaDevices.getUserMedia({
-        video:{width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}},audio:false
+        video:{width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}},audio:true
       });
       preview.srcObject=stream;
       for(const [id,pc] of peers){
