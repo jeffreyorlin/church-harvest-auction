@@ -24,6 +24,7 @@
 #cameraPassGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700;background:#ffd54a;color:#111}
 #cameraPassGate .err{color:#ff8c8c;min-height:22px;margin-top:10px}
 body.camera-locked>*:not(#cameraPassGate){visibility:hidden}
+.lens-only-banner{margin:10px auto;padding:11px 14px;max-width:900px;border-radius:10px;background:#101b2c;color:#ffd54a;font-weight:900;text-align:center}.camera-sound-panel{margin:14px auto 0;max-width:900px;padding:14px 16px;border:1px solid #33415f;border-radius:14px;background:#0d1728;text-align:left}.camera-sound-title{font-weight:900;font-size:1rem;margin-bottom:10px}.camera-sound-row{display:flex;align-items:center;gap:12px;margin:9px 0;flex-wrap:wrap}.camera-sound-row label{font-weight:800;min-width:130px}.camera-sound-row select,.camera-sound-row input[type=range]{flex:1;min-width:180px}.camera-sound-row select{padding:9px;border-radius:8px}.camera-meter-wrap{display:flex;align-items:center;gap:10px;margin-top:10px;font-weight:800}.camera-meter{height:14px;flex:1;min-width:160px;background:#18243a;border-radius:99px;overflow:hidden;border:1px solid #50607a}.camera-meter-fill{height:100%;width:0%;transition:width .08s linear;background:#ffd54a}@media(max-width:700px){.camera-sound-row{display:block}.camera-sound-row label{display:block;margin-bottom:5px}.camera-sound-row select,.camera-sound-row input[type=range]{width:100%;box-sizing:border-box}.camera-meter-wrap{flex-wrap:wrap}}
 </style>
 <div id="cameraPassGate">
   <div class="pass-box">
@@ -62,14 +63,14 @@ document.body.classList.add('camera-locked');
 <div id="app" class="hidden">
   <div class="card center">
     <h2>Live Product Camera</h2>
-    <video id="preview" autoplay muted playsinline></video>
-    <div><button class="primary" id="startBtn" onclick="startCamera()">START CAMERA</button><button id="mainLensSwitchBtn" onclick="cycleMainLens()" class="hidden">🔄 START / SWITCH CAMERA</button><button id="dualBtn" onclick="toggleDualCamera()" class="hidden">📷 DUAL CAMERA</button><button id="switchBtn" onclick="switchCamera()" class="hidden">🔄 SWITCH CAMERA</button><button id="stopBtn" onclick="stopCamera()" class="hidden">STOP CAMERA</button></div>
+    <video id="preview" autoplay playsinline></video>
+    <div class="lens-only-banner">🔗 LENS CONNECTION — connect Lens 1 or Lens 2 to show the LIVE PRODUCT.</div>
     <div id="lensPicker" class="lens-picker hidden">
       <div class="lens-picker-row">
-        <strong>📷 CONNECT TO LENS:</strong>
+        <strong>🔗 LENS CONNECTION:</strong>
         <select id="lensSelect"><option value="">Select a camera/lens…</option></select>
         <button type="button" id="refreshLensBtn" onclick="refreshLensList()">🔄 REFRESH</button>
-        <button type="button" id="connectLensBtn" class="primary" onclick="connectSelectedLens()">CONNECT LENS</button>
+        <button type="button" id="connectLensBtn" class="primary" onclick="connectSelectedLens()">🔗 CONNECT LENS</button>
       </div>
       <p id="lensMsg" class="small muted">Choose a physical camera/webcam from the list, then press CONNECT LENS.</p>
     </div>
@@ -99,7 +100,24 @@ document.body.classList.add('camera-locked');
       </div>
       <p id="dualMsg" class="small muted">Enable Dual Camera to detect the available cameras.</p>
     </div>
+    <div id="cameraSoundPanel" class="camera-sound-panel">
+      <div class="camera-sound-title">🔊 LIVE PRODUCT SOUND</div>
+      <div class="camera-sound-row">
+        <label for="cameraSoundOutput">SOUND OUTPUT</label>
+        <select id="cameraSoundOutput" onchange="changeCameraSoundOutput(this.value)">
+          <option value="internal">🔊 INTERNAL SPEAKER</option>
+          <option value="external">🔈 EXTERNAL SPEAKER</option>
+        </select>
+      </div>
+      <div class="camera-sound-row">
+        <label for="cameraLiveVolume">VOLUME <span id="cameraLiveVolumeValue">100%</span></label>
+        <input id="cameraLiveVolume" type="range" min="0" max="100" value="100" step="1" oninput="setCameraLiveVolume(this.value)">
+      </div>
+      <div class="camera-meter-wrap"><span>VOLUME METER</span><div class="camera-meter"><div id="cameraMeterFill" class="camera-meter-fill"></div></div><span id="cameraMeterText">0%</span></div>
+      <div id="cameraSoundOutputStatus" class="small muted">Internal/default speaker selected</div>
+    </div>
     <div id="cameraControls" class="camera-controls hidden">
+      <div style="font-weight:900;margin-bottom:8px">🔍 ZOOM — CONNECTED LENS ONLY</div>
       <div class="camera-control-row">
         <label for="zoomRange">🔍 ZOOM</label>
         <input id="zoomRange" type="range" min="1" max="4" step="0.1" value="1" disabled>
@@ -114,6 +132,7 @@ document.body.classList.add('camera-locked');
         <button type="button" class="rotationBtn" data-rotation="270">CAMERA 270°</button>
       </div>
     </div>
+    <p class="small muted" style="margin-top:10px">🔗 Lens Connection uses the Zoom and Rotation controls. Zoom works from 1.0× to 4.0× for the connected Lens.</p>
     <p id="camMsg" class="small muted">Point this phone at the product. Keep this page open during the auction.</p>
   </div>
 </div></div>
@@ -195,7 +214,7 @@ async function startRemoteLensMode(){
   const panel=document.getElementById('lensConnectPanel'); if(panel)panel.innerHTML='<div class="dual-title">📷 LENS '+n+' PHONE</div><p class="small muted">This phone is connected as Lens '+n+'. Keep this page open. The laptop can switch this lens LIVE.</p><video id="remotePhonePreview" class="scanner-video" autoplay muted playsinline></video><p id="remotePhoneMsg" class="lens-status">Connecting…</p>';
   try{
     if(!navigator.mediaDevices?.getUserMedia)throw new Error('Camera access is not supported.');
-    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:false});
+    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:true});
     const v=document.getElementById('remotePhonePreview'); if(v){v.srcObject=st;await v.play().catch(()=>{});} 
     const id='lens-'+n+'-'+Math.random().toString(36).slice(2,8);
     const pc=new RTCPeerConnection({iceServers:ICE_SERVERS}); st.getTracks().forEach(t=>pc.addTrack(t,st));
@@ -238,6 +257,49 @@ function clearRemoteLens(lens){const pc=remoteLensPeers.get(lens);if(pc)pc.close
 window.toggleLensScanner=async()=>{const box=document.getElementById('lensScanner');if(box.classList.contains('show')){stopLensScanner();return;}box.classList.add('show');try{scannerStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});const v=document.getElementById('scannerVideo');v.srcObject=scannerStream;await v.play();scannerLoop();}catch(e){document.getElementById('scannerMsg').textContent='Scanner camera error: '+(e.message||e.name);}};
 window.stopLensScanner=()=>{if(scannerTimer)cancelAnimationFrame(scannerTimer);scannerTimer=null;if(scannerStream)scannerStream.getTracks().forEach(t=>t.stop());scannerStream=null;document.getElementById('lensScanner')?.classList.remove('show');};
 function scannerLoop(){const v=document.getElementById('scannerVideo'),c=document.getElementById('scannerCanvas');if(!v||!c)return;const w=v.videoWidth,h=v.videoHeight;if(!w||!h){scannerTimer=requestAnimationFrame(scannerLoop);return;}c.width=w;c.height=h;const x=c.getContext('2d');x.drawImage(v,0,0,w,h);let value=null;if('BarcodeDetector' in window){/* browser detector handled below asynchronously */}if(window.jsQR){const code=jsQR(x.getImageData(0,0,w,h).data,w,h);if(code)value=code.data;}if(value){try{const u=new URL(value);const n=Number(u.searchParams.get('lens'));if([1,2].includes(n)){document.getElementById('scannerMsg').textContent='✅ Lens '+n+' QR detected. Opening lens connection…';stopLensScanner();location.href=value;return;}}catch(_){} }scannerTimer=requestAnimationFrame(scannerLoop);}
+
+
+let cameraLiveVolume=1;
+let cameraOutputMode='internal';
+let cameraExternalOutputId='';
+let cameraAudioContext=null, cameraAnalyser=null, cameraMeterAnimation=null;
+function cameraAudioElements(){ const v=document.getElementById('preview'); return v?[v]:[]; }
+async function loadCameraAudioOutputs(){
+  const sel=document.getElementById('cameraSoundOutput'); if(!sel||!navigator.mediaDevices?.enumerateDevices)return;
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const ext=devices.find(d=>d.kind==='audiooutput'&&d.deviceId&&d.deviceId!=='default');
+    cameraExternalOutputId=ext?.deviceId||'';
+    if(ext&&ext.label){ const o=[...sel.options].find(x=>x.value==='external'); if(o)o.textContent='🔈 EXTERNAL: '+ext.label; }
+  }catch(e){console.warn(e)}
+}
+async function changeCameraSoundOutput(mode){
+  cameraOutputMode=mode;
+  let sink='default', routed=false;
+  if(mode==='external'&&cameraExternalOutputId)sink=cameraExternalOutputId;
+  for(const el of cameraAudioElements()){
+    if(typeof el.setSinkId==='function'){try{await el.setSinkId(sink);routed=true}catch(e){console.warn(e)}}
+  }
+  const st=document.getElementById('cameraSoundOutputStatus');
+  if(st)st.textContent=mode==='external'?(routed?'External speaker/output selected':'External output not supported; using default output'):'Internal/default speaker selected';
+  localStorage.setItem('churchAuctionCameraSoundOutput',mode);
+}
+function setCameraLiveVolume(value){
+  const n=Math.max(0,Math.min(100,Number(value)||0)); cameraLiveVolume=n/100;
+  const v=document.getElementById('preview'); if(v){v.muted=false;v.volume=cameraLiveVolume;}
+  const label=document.getElementById('cameraLiveVolumeValue'); if(label)label.textContent=n+'%';
+  localStorage.setItem('churchAuctionCameraLiveVolume',String(n));
+}
+function startCameraVolumeMeter(){
+  const v=document.getElementById('preview'); if(!v||cameraMeterAnimation)return;
+  const AC=window.AudioContext||window.webkitAudioContext; if(!AC)return;
+  try{
+    cameraAudioContext=new AC(); const src=cameraAudioContext.createMediaElementSource(v); cameraAnalyser=cameraAudioContext.createAnalyser(); cameraAnalyser.fftSize=256; src.connect(cameraAnalyser); cameraAnalyser.connect(cameraAudioContext.destination);
+    const data=new Uint8Array(cameraAnalyser.frequencyBinCount);
+    const draw=()=>{if(!cameraAnalyser)return;cameraAnalyser.getByteFrequencyData(data);let sum=0;for(const n of data)sum+=n*n;const pct=Math.max(0,Math.min(100,Math.round(Math.sqrt(sum/data.length)/255*150)));const f=document.getElementById('cameraMeterFill'),t=document.getElementById('cameraMeterText');if(f)f.style.width=pct+'%';if(t)t.textContent=pct+'%';cameraMeterAnimation=requestAnimationFrame(draw)}; draw();
+  }catch(e){console.warn('Camera volume meter unavailable',e)}
+}
+window.addEventListener('load',async()=>{const v=Number(localStorage.getItem('churchAuctionCameraLiveVolume'));const s=document.getElementById('cameraLiveVolume');if(Number.isFinite(v)&&s)s.value=Math.max(0,Math.min(100,v));setCameraLiveVolume(s?.value??100);const mode=localStorage.getItem('churchAuctionCameraSoundOutput')||'internal';const sel=document.getElementById('cameraSoundOutput');if(sel)sel.value=mode;cameraOutputMode=mode;await loadCameraAudioOutputs();await changeCameraSoundOutput(mode);['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,async()=>{try{if(cameraAudioContext?.state==='suspended')await cameraAudioContext.resume()}catch(e){}},{passive:true}))});
 
 function setRotation(rotation, broadcast=true){
   cameraRotation=((Number(rotation)%360)+360)%360;
