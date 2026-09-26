@@ -126,8 +126,9 @@ document.body.classList.add('camera-locked');
         <button type="button" onclick="refreshCameraAudioInputs()">🔄 REFRESH AUDIO</button>
       </div>
       <div class="camera-sound-row">
-        <label>SOUND OUTPUT</label>
-        <strong>🔊 PHONE INTERNAL SPEAKER</strong>
+        <label for="cameraAudioOutput">SOUND OUTPUT</label>
+        <select id="cameraAudioOutput" onchange="changeCameraSoundOutput(this.value)"><option value="default">🔊 DEFAULT / SYSTEM / PHONE OUTPUT</option></select>
+        <button type="button" onclick="refreshCameraAudioOutputs()">🔄 REFRESH OUTPUT</button>
       </div>
       <div class="camera-sound-row">
         <label for="cameraLiveVolume">VOLUME <span id="cameraLiveVolumeValue">100%</span></label>
@@ -336,7 +337,7 @@ function scannerLoop(){const v=document.getElementById('scannerVideo'),c=documen
 
 
 let cameraLiveVolume=1;
-let cameraOutputMode='internal';
+let cameraOutputMode=localStorage.getItem('churchAuctionCameraSoundOutput')||'default';
 let cameraExternalOutputId='';
 let cameraMuted={internal:false,external:false};
 let cameraAudioContext=null, cameraAnalyser=null, cameraMeterAnimation=null;
@@ -344,7 +345,27 @@ let cameraAudioInputId='';
 function cameraAudioElements(){ const v=document.getElementById('preview'); return v?[v]:[]; }
 async function loadCameraAudioOutputs(){
   await refreshCameraAudioInputs();
+  await refreshCameraAudioOutputs();
 }
+async function refreshCameraAudioOutputs(){
+  const sel=document.getElementById('cameraAudioOutput');
+  if(!sel||!navigator.mediaDevices?.enumerateDevices)return;
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const outputs=devices.filter(d=>d.kind==='audiooutput');
+    const saved=localStorage.getItem('churchAuctionCameraSoundOutput')||'default';
+    sel.innerHTML='<option value="default">🔊 DEFAULT / SYSTEM / PHONE OUTPUT</option>';
+    outputs.forEach((d,i)=>{
+      const label=d.label||('Audio output '+(i+1));
+      const o=document.createElement('option'); o.value=d.deviceId;
+      o.textContent=(/usb|sound.?card|mixer|line.?out|external/i.test(label)?'🎚️ ':'🔊 ')+label;
+      sel.appendChild(o);
+    });
+    sel.value=[...sel.options].some(o=>o.value===saved)?saved:'default';
+    cameraOutputMode=sel.value;
+  }catch(e){console.warn('Could not enumerate audio outputs:',e)}
+}
+window.refreshCameraAudioOutputs=refreshCameraAudioOutputs;
 async function refreshCameraAudioInputs(){
   const sel=document.getElementById('cameraAudioInput');
   if(!sel||!navigator.mediaDevices?.enumerateDevices)return;
@@ -393,16 +414,22 @@ window.enableLensAudio=async function(){
 };
 
 async function changeCameraSoundOutput(mode){
-  cameraOutputMode='internal';
+  cameraOutputMode=mode||'default';
   const v=document.getElementById('preview');
   if(v){
-    if(typeof v.setSinkId==='function'){try{await v.setSinkId('default')}catch(e){}}
     v.muted=!!cameraMuted.internal;
+    if(typeof v.setSinkId==='function'){
+      try{await v.setSinkId(cameraOutputMode==='default'?'default':cameraOutputMode);}
+      catch(e){console.warn('USB/system audio output routing unavailable:',e);}
+    }
   }
+  const sel=document.getElementById('cameraAudioOutput');
+  if(sel)sel.value=cameraOutputMode;
   const st=document.getElementById('cameraSoundOutputStatus');
-  if(st)st.textContent=cameraAudioInputId?'🎚️ USB mixer/sound-card input → 🔊 phone internal speaker':'🎙️ Default phone audio input → 🔊 phone internal speaker';
+  const out=sel?.selectedOptions?.[0]?.textContent||'🔊 DEFAULT / SYSTEM / PHONE OUTPUT';
+  if(st)st.textContent=(cameraAudioInputId?'🎚️ USB mixer/sound-card INPUT':'🎙️ Default INPUT')+' → '+out;
   updateCameraMuteButtons();
-  localStorage.setItem('churchAuctionCameraSoundOutput','internal');
+  localStorage.setItem('churchAuctionCameraSoundOutput',cameraOutputMode);
 }
 function updateCameraMuteButtons(){
   const a=document.getElementById('muteInternalBtn'),b=document.getElementById('muteExternalBtn');
@@ -441,7 +468,7 @@ function startCameraVolumeMeter(mediaStream){
     if(cameraAudioContext.state==='suspended') cameraAudioContext.resume().catch(()=>{});
   }catch(e){console.warn('Camera volume meter unavailable',e)}
 }
-window.addEventListener('load',async()=>{cameraMuted.internal=localStorage.getItem('churchAuctionCameraMutedInternal')==='1';cameraMuted.external=localStorage.getItem('churchAuctionCameraMutedExternal')==='1';updateCameraMuteButtons();updateTopLensStatus();const v=Number(localStorage.getItem('churchAuctionCameraLiveVolume'));const s=document.getElementById('cameraLiveVolume');if(Number.isFinite(v)&&s)s.value=Math.max(0,Math.min(100,v));setCameraLiveVolume(s?.value??100);const mode=localStorage.getItem('churchAuctionCameraSoundOutput')||'internal';const sel=document.getElementById('cameraSoundOutput');if(sel)sel.value=mode;cameraOutputMode=mode;await loadCameraAudioOutputs();await changeCameraSoundOutput('internal');['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,async()=>{try{if(cameraAudioContext?.state==='suspended')await cameraAudioContext.resume()}catch(e){}},{passive:true}))});
+window.addEventListener('load',async()=>{cameraMuted.internal=localStorage.getItem('churchAuctionCameraMutedInternal')==='1';cameraMuted.external=localStorage.getItem('churchAuctionCameraMutedExternal')==='1';updateCameraMuteButtons();updateTopLensStatus();const v=Number(localStorage.getItem('churchAuctionCameraLiveVolume'));const s=document.getElementById('cameraLiveVolume');if(Number.isFinite(v)&&s)s.value=Math.max(0,Math.min(100,v));setCameraLiveVolume(s?.value??100);cameraOutputMode=localStorage.getItem('churchAuctionCameraSoundOutput')||'default';await loadCameraAudioOutputs();await changeCameraSoundOutput(cameraOutputMode);['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,async()=>{try{if(cameraAudioContext?.state==='suspended')await cameraAudioContext.resume()}catch(e){}},{passive:true}))});
 
 function setRotation(rotation, broadcast=true){
   cameraRotation=((Number(rotation)%360)+360)%360;
