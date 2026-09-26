@@ -457,7 +457,8 @@ async function refresh(){
  if(error)return;
  state=data;
  const currentAmount=Number(data.current_bid||0);
- if(lastKnownBidAmount!==null && currentAmount>lastKnownBidAmount){ playBidBell(); }
+ const currentSource=String(data.highest_bid_source||'').toLowerCase();
+ if(lastKnownBidAmount!==null && currentAmount>lastKnownBidAmount && currentSource==='online'){ playBidBell(); }
  lastKnownBidAmount=currentAmount;
  document.getElementById("itemLabel").textContent=`Item ${data.item_number}: ${data.item_name}`;
  document.getElementById("currentBid").textContent=money(data.current_bid);
