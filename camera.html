@@ -68,6 +68,7 @@ document.body.classList.add('camera-locked');
     <div class="top-lens-switch">
       <button type="button" id="topLensSwitchBtn" class="primary" onclick="switchConnectedLens()">🔄 SWITCH LENS</button>
       <span id="topLensStatus" class="small muted">No lens selected</span>
+      <button type="button" id="enableLensAudioBtn" onclick="enableLensAudio()">🔊 ENABLE LENS AUDIO</button>
     </div>
     <div class="lens-only-banner">🔗 LENS CONNECTION — connect Lens 1 or Lens 2 to show the LIVE PRODUCT.</div>
     <div id="lensPicker" class="lens-picker hidden">
@@ -246,7 +247,7 @@ async function acceptRemoteLensOffer(payload){
     if(e.track && !st.getTracks().some(t=>t.id===e.track.id)) st.addTrack(e.track);
     updateRemoteLensUI(lens,true);
     const v=document.getElementById('preview');
-    if(e.track.kind==='video' && v && !v.srcObject) useRemoteLens(lens);
+    if(e.track.kind==='video' && v) useRemoteLens(lens);
   };
   try{
     await pc.setRemoteDescription(payload.offer);
@@ -265,7 +266,14 @@ window.useRemoteLens=async lens=>{
   const track=st.getVideoTracks()[0];
   stream=st; activeDualIndex=-1; activeSource='remote'; activeRemoteLens=Number(lens);
   const preview=document.getElementById('preview');
-  if(preview){preview.srcObject=st; preview.muted=false; preview.volume=cameraLiveVolume; await preview.play().catch(e=>console.warn('Lens preview play failed',e));}
+  if(preview){
+    preview.srcObject=null;
+    preview.srcObject=st;
+    preview.muted=false;
+    preview.volume=cameraLiveVolume>0?cameraLiveVolume:1;
+    preview.setAttribute('playsinline','');
+    await preview.play().catch(e=>console.warn('Lens preview play failed',e));
+  }
   for(const pc of peers.values()){const sender=pc.getSenders().find(x=>x.track?.kind==='video');if(sender)await sender.replaceTrack(track).catch(()=>{});}
   await refreshCameraControlsForTrack(track);
   setRotation(cameraRotation,false);
@@ -308,6 +316,25 @@ async function loadCameraAudioOutputs(){
     if(ext&&ext.label){ const o=[...sel.options].find(x=>x.value==='external'); if(o)o.textContent='🔈 EXTERNAL: '+ext.label; }
   }catch(e){console.warn(e)}
 }
+window.enableLensAudio=async function(){
+  const v=document.getElementById('preview');
+  if(!v)return;
+  try{
+    v.muted=false;
+    v.volume=cameraLiveVolume>0?cameraLiveVolume:1;
+    if(cameraAudioContext?.state==='suspended') await cameraAudioContext.resume();
+    if(v.srcObject) startCameraVolumeMeter(v.srcObject);
+    await v.play();
+    const b=document.getElementById('enableLensAudioBtn');
+    if(b){b.textContent='🔊 LENS AUDIO ON'; b.disabled=true;}
+    const st=document.getElementById('cameraSoundOutputStatus');
+    if(st)st.textContent='Lens audio enabled at '+Math.round(v.volume*100)+'% volume';
+  }catch(e){
+    const st=document.getElementById('cameraSoundOutputStatus');
+    if(st)st.textContent='Tap ENABLE LENS AUDIO again: '+(e.message||e.name);
+  }
+};
+
 async function changeCameraSoundOutput(mode){
   cameraOutputMode=mode;
   let sink='default', routed=false;
