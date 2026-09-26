@@ -84,9 +84,11 @@ document.body.classList.add('camera-locked');
         <strong>🔗 LENS CONNECTION:</strong>
         <select id="lensSelect"><option value="">Select a camera/lens…</option></select>
         <button type="button" id="refreshLensBtn" onclick="refreshLensList()">🔄 REFRESH</button>
-        <button type="button" id="connectLensBtn" class="primary" onclick="connectSelectedLens()">🔗 CONNECT LENS</button>
+        <button type="button" id="connectDroidCamBtn" class="primary" onclick="connectDroidCam()">📱 CONNECT DROIDCAM</button>
+        <button type="button" id="connectLensBtn" class="primary" onclick="connectSelectedLens()">🔗 CONNECT CAMERA</button>
       </div>
-      <p id="lensMsg" class="small muted">Choose a physical camera/webcam from the list, then press CONNECT LENS.</p>
+      <p id="lensMsg" class="small muted">Choose a physical camera/webcam from the list, then press CONNECT CAMERA. For DroidCam, connect the phone first and use CONNECT DROIDCAM.</p>
+      <p class="small muted">📱 DroidCam USB: install DroidCam on the phone and PC, enable USB debugging if requested, connect the USB cable, then press REFRESH → CONNECT DROIDCAM. DroidCam supports USB and Wi‑Fi webcam connections.</p>
     </div>
     <div id="lensConnectPanel" class="lens-connect-panel">
       <div class="dual-title">📱 CONNECT TWO PHONE LENSES</div>
@@ -117,11 +119,15 @@ document.body.classList.add('camera-locked');
     <div id="cameraSoundPanel" class="camera-sound-panel">
       <div class="camera-sound-title">🔊 LIVE PRODUCT SOUND</div>
       <div class="camera-sound-row">
-        <label for="cameraSoundOutput">SOUND OUTPUT</label>
-        <select id="cameraSoundOutput" onchange="changeCameraSoundOutput(this.value)">
-          <option value="internal">🔊 INTERNAL SPEAKER</option>
-          <option value="external">🔈 EXTERNAL SPEAKER</option>
+        <label for="cameraAudioInput">SOUND INPUT</label>
+        <select id="cameraAudioInput" onchange="changeCameraAudioInput(this.value)">
+          <option value="">🎙️ DEFAULT / PHONE AUDIO</option>
         </select>
+        <button type="button" onclick="refreshCameraAudioInputs()">🔄 REFRESH AUDIO</button>
+      </div>
+      <div class="camera-sound-row">
+        <label>SOUND OUTPUT</label>
+        <strong>🔊 PHONE INTERNAL SPEAKER</strong>
       </div>
       <div class="camera-sound-row">
         <label for="cameraLiveVolume">VOLUME <span id="cameraLiveVolumeValue">100%</span></label>
@@ -133,10 +139,10 @@ document.body.classList.add('camera-locked');
         <button type="button" id="muteExternalBtn" onclick="toggleCameraMute('external')">🔊 MUTE EXTERNAL</button>
       </div>
       <div class="camera-meter-wrap"><span>VOLUME METER</span><div class="camera-meter"><div id="cameraMeterFill" class="camera-meter-fill"></div></div><span id="cameraMeterText">0%</span></div>
-      <div id="cameraSoundOutputStatus" class="small muted">Internal/default speaker selected</div>
+      <div id="cameraSoundOutputStatus" class="small muted">USB mixer/sound-card input → phone internal speaker</div>
     </div>
     <div id="cameraControls" class="camera-controls hidden">
-      <div style="font-weight:900;margin-bottom:8px">🔍 ZOOM — CONNECTED LENS ONLY</div>
+      <div style="font-weight:900;margin-bottom:8px">🔍 ZOOM — INTEGRATED DEVICE CAMERA ONLY</div>
       <div class="camera-control-row">
         <label for="zoomRange">🔍 ZOOM</label>
         <input id="zoomRange" type="range" min="1" max="4" step="0.1" value="1" disabled>
@@ -334,16 +340,39 @@ let cameraOutputMode='internal';
 let cameraExternalOutputId='';
 let cameraMuted={internal:false,external:false};
 let cameraAudioContext=null, cameraAnalyser=null, cameraMeterAnimation=null;
+let cameraAudioInputId='';
 function cameraAudioElements(){ const v=document.getElementById('preview'); return v?[v]:[]; }
 async function loadCameraAudioOutputs(){
-  const sel=document.getElementById('cameraSoundOutput'); if(!sel||!navigator.mediaDevices?.enumerateDevices)return;
+  await refreshCameraAudioInputs();
+}
+async function refreshCameraAudioInputs(){
+  const sel=document.getElementById('cameraAudioInput');
+  if(!sel||!navigator.mediaDevices?.enumerateDevices)return;
   try{
     const devices=await navigator.mediaDevices.enumerateDevices();
-    const ext=devices.find(d=>d.kind==='audiooutput'&&d.deviceId&&d.deviceId!=='default');
-    cameraExternalOutputId=ext?.deviceId||'';
-    if(ext&&ext.label){ const o=[...sel.options].find(x=>x.value==='external'); if(o)o.textContent='🔈 EXTERNAL: '+ext.label; }
-  }catch(e){console.warn(e)}
+    const inputs=devices.filter(d=>d.kind==='audioinput');
+    const saved=localStorage.getItem('churchAuctionCameraAudioInput')||'';
+    sel.innerHTML='<option value="">🎙️ DEFAULT / PHONE AUDIO</option>';
+    let preferred='';
+    inputs.forEach((d,i)=>{
+      const label=d.label||('Audio input '+(i+1));
+      const o=document.createElement('option'); o.value=d.deviceId;
+      o.textContent=(/usb|sound.?card|mixer|line.?in|external/i.test(label)?'🎚️ ':'🎙️ ')+label;
+      sel.appendChild(o);
+      if(d.deviceId===saved) preferred=d.deviceId;
+      if(!preferred && /usb|sound.?card|mixer|line.?in|external/i.test(label)) preferred=d.deviceId;
+    });
+    cameraAudioInputId=preferred||'';
+    sel.value=cameraAudioInputId;
+  }catch(e){console.warn('Could not enumerate audio inputs:',e)}
 }
+window.changeCameraAudioInput=async function(id){
+  cameraAudioInputId=id||'';
+  localStorage.setItem('churchAuctionCameraAudioInput',cameraAudioInputId);
+  const st=document.getElementById('cameraSoundOutputStatus');
+  if(st)st.textContent=cameraAudioInputId?'🎚️ USB mixer/sound-card selected → 🔊 phone internal speaker. Restart camera to apply the new input.':'🎙️ Default phone audio input → 🔊 phone internal speaker. Restart camera to apply.';
+};
+window.refreshCameraAudioInputs=refreshCameraAudioInputs;
 window.enableLensAudio=async function(){
   const v=document.getElementById('preview');
   if(!v)return;
@@ -364,18 +393,16 @@ window.enableLensAudio=async function(){
 };
 
 async function changeCameraSoundOutput(mode){
-  cameraOutputMode=mode;
-  let sink='default', routed=false;
-  if(mode==='external'&&cameraExternalOutputId)sink=cameraExternalOutputId;
-  for(const el of cameraAudioElements()){
-    if(typeof el.setSinkId==='function'){try{await el.setSinkId(sink);routed=true}catch(e){console.warn(e)}}
-    el.muted=!!cameraMuted[mode];
+  cameraOutputMode='internal';
+  const v=document.getElementById('preview');
+  if(v){
+    if(typeof v.setSinkId==='function'){try{await v.setSinkId('default')}catch(e){}}
+    v.muted=!!cameraMuted.internal;
   }
   const st=document.getElementById('cameraSoundOutputStatus');
-  const muteText=cameraMuted[mode]?' • MUTED':'';
-  if(st)st.textContent=mode==='external'?(routed?'External speaker/output selected':'External output not supported; using default output')+' '+muteText:'Internal/default speaker selected'+muteText;
+  if(st)st.textContent=cameraAudioInputId?'🎚️ USB mixer/sound-card input → 🔊 phone internal speaker':'🎙️ Default phone audio input → 🔊 phone internal speaker';
   updateCameraMuteButtons();
-  localStorage.setItem('churchAuctionCameraSoundOutput',mode);
+  localStorage.setItem('churchAuctionCameraSoundOutput','internal');
 }
 function updateCameraMuteButtons(){
   const a=document.getElementById('muteInternalBtn'),b=document.getElementById('muteExternalBtn');
@@ -414,7 +441,7 @@ function startCameraVolumeMeter(mediaStream){
     if(cameraAudioContext.state==='suspended') cameraAudioContext.resume().catch(()=>{});
   }catch(e){console.warn('Camera volume meter unavailable',e)}
 }
-window.addEventListener('load',async()=>{cameraMuted.internal=localStorage.getItem('churchAuctionCameraMutedInternal')==='1';cameraMuted.external=localStorage.getItem('churchAuctionCameraMutedExternal')==='1';updateCameraMuteButtons();updateTopLensStatus();const v=Number(localStorage.getItem('churchAuctionCameraLiveVolume'));const s=document.getElementById('cameraLiveVolume');if(Number.isFinite(v)&&s)s.value=Math.max(0,Math.min(100,v));setCameraLiveVolume(s?.value??100);const mode=localStorage.getItem('churchAuctionCameraSoundOutput')||'internal';const sel=document.getElementById('cameraSoundOutput');if(sel)sel.value=mode;cameraOutputMode=mode;await loadCameraAudioOutputs();await changeCameraSoundOutput(mode);['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,async()=>{try{if(cameraAudioContext?.state==='suspended')await cameraAudioContext.resume()}catch(e){}},{passive:true}))});
+window.addEventListener('load',async()=>{cameraMuted.internal=localStorage.getItem('churchAuctionCameraMutedInternal')==='1';cameraMuted.external=localStorage.getItem('churchAuctionCameraMutedExternal')==='1';updateCameraMuteButtons();updateTopLensStatus();const v=Number(localStorage.getItem('churchAuctionCameraLiveVolume'));const s=document.getElementById('cameraLiveVolume');if(Number.isFinite(v)&&s)s.value=Math.max(0,Math.min(100,v));setCameraLiveVolume(s?.value??100);const mode=localStorage.getItem('churchAuctionCameraSoundOutput')||'internal';const sel=document.getElementById('cameraSoundOutput');if(sel)sel.value=mode;cameraOutputMode=mode;await loadCameraAudioOutputs();await changeCameraSoundOutput('internal');['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,async()=>{try{if(cameraAudioContext?.state==='suspended')await cameraAudioContext.resume()}catch(e){}},{passive:true}))});
 
 function setRotation(rotation, broadcast=true){
   cameraRotation=((Number(rotation)%360)+360)%360;
@@ -493,13 +520,32 @@ async function refreshLensList(){
     if(msg)msg.textContent=devices.length ? devices.length+' camera/lens device(s) found. Select one and connect it.' : 'No camera/lens found.';
   }catch(e){if(msg)msg.textContent='Could not list lenses: '+(e.message||e.name||String(e));}
 }
+async function connectDroidCam(){
+  const msg=document.getElementById('lensMsg');
+  try{
+    await refreshLensList();
+    const select=document.getElementById('lensSelect');
+    const options=[...select.options];
+    const match=options.find(o=>/droidcam|dev47|phone.*camera/i.test(o.textContent||''));
+    if(!match){
+      if(msg)msg.textContent='DroidCam was not detected. Install/open DroidCam on the phone and PC, connect by USB or Wi‑Fi, then press REFRESH.';
+      return;
+    }
+    select.value=match.value;
+    if(msg)msg.textContent='DroidCam detected: '+match.textContent+'. Connecting…';
+    await connectSelectedLens();
+  }catch(e){
+    if(msg)msg.textContent='DroidCam connection failed: '+(e.message||e.name||String(e));
+  }
+}
+
 async function connectSelectedLens(){
   const select=document.getElementById('lensSelect');
   const msg=document.getElementById('lensMsg');
   const id=select?.value;
   if(!id){if(msg)msg.textContent='Please select a lens first.';return;}
   try{
-    const newStream=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:id},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:true});
+    const newStream=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:id},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:getCameraAudioConstraints()});
     const newTrack=newStream.getVideoTracks()[0];
     if(!newTrack)throw new Error('The selected lens did not provide a video track.');
     const old=stream;
@@ -507,6 +553,7 @@ async function connectSelectedLens(){
     localCameraStream=stream;
     const preview=document.getElementById('preview');
     if(preview){preview.srcObject=stream;await preview.play().catch(()=>{});}
+    startCameraVolumeMeter(stream);
     for(const [peerId,pc] of peers){
       try{const sender=pc.getSenders().find(x=>x.track&&x.track.kind==='video');if(sender)await sender.replaceTrack(newTrack);}catch(e){console.warn('Lens switch failed for peer',peerId,e);}
     }
@@ -639,6 +686,10 @@ async function refreshCameraControlsForTrack(track){
   }
 }
 
+function getCameraAudioConstraints(){
+  return cameraAudioInputId ? {deviceId:{exact:cameraAudioInputId},echoCancellation:false,noiseSuppression:false,autoGainControl:false} : {echoCancellation:false,noiseSuppression:false,autoGainControl:false};
+}
+
 async function startCamera(){
   const msg=document.getElementById('camMsg');
   const preview=document.getElementById('preview');
@@ -660,10 +711,10 @@ async function startCamera(){
     msg.textContent='Requesting Full HD 1920×1080 camera at 30 FPS...';
     try{
       try{
-        stream=await navigator.mediaDevices.getUserMedia({video:{width:{exact:1920},height:{exact:1080},frameRate:{exact:30}},audio:true});
+        stream=await navigator.mediaDevices.getUserMedia({video:{width:{exact:1920},height:{exact:1080},frameRate:{exact:30}},audio:getCameraAudioConstraints()});
       }catch(exactErr){
         console.warn('Exact 1920×1080@30 unavailable; using best supported mode:', exactErr);
-        stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}},audio:true});
+        stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}},audio:getCameraAudioConstraints()});
       }
     }catch(e){
       console.error('Basic getUserMedia failed:',e);
@@ -682,10 +733,12 @@ async function startCamera(){
     }
 
     localCameraStream=stream;
+    await refreshCameraAudioInputs();
     activeSource='local'; activeRemoteLens=0;
     const track=stream.getVideoTracks()[0];
     preview.srcObject=stream;
     try{ await preview.play(); }catch(_){ }
+    startCameraVolumeMeter(stream);
 
     // Re-apply Full HD + 30 FPS when supported. Exact constraints are used so
     // the browser does not silently settle at 1280×720 when 1080p is available.

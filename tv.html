@@ -25,6 +25,7 @@
   </div>
 </div>
 <audio id="soldClapAudio" src="sold-clapping.mp3" preload="auto"></audio>
+<audio id="tvBidBellAudio" src="mixkit-notification-bell-592.wav" preload="auto"></audio>
   <div class="tv-topbar">
     <div class="tv-title auction-pulse">⛪ CHURCH AUCTION</div>
     <div class="tv-controls">
@@ -103,7 +104,7 @@ function esc(s) {
 </script>
 <script>
 let sb,channel,camChannel,camPeer,viewerId=Math.random().toString(36).slice(2);
-let lastSoldKey=""; let soldAudioTimer=null;
+let lastSoldKey=""; let soldAudioTimer=null; let lastTvBid=null; let lastTvItem=null; let tvBidBellUnlocked=false;
 function playSoldClap(key){
   if(key===lastSoldKey)return;
   lastSoldKey=key;
@@ -118,11 +119,21 @@ async function init(){
  channel=sb.channel("auction-live").on("postgres_changes",{event:"*",schema:"public",table:"auction_state"},refresh).subscribe();
  setupCameraViewer();
 }
-let lastTvBid=null;
+async function unlockTvBidBell(){
+ const a=document.getElementById('tvBidBellAudio'); if(!a)return;
+ try{a.muted=true;a.currentTime=0;await a.play();a.pause();a.currentTime=0;a.muted=false;tvBidBellUnlocked=true;}catch(e){}
+}
+function playTvBidBell(){
+ const a=document.getElementById('tvBidBellAudio'); if(!a)return;
+ try{a.pause();a.currentTime=0;a.volume=1;a.muted=false;const p=a.play();if(p&&p.catch)p.catch(()=>{});}catch(e){}
+}
+['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,()=>unlockTvBidBell(),{passive:true}));
 async function refresh(){const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();if(error)return;
  const newBid=Number(data.current_bid||0);
-
- lastTvBid=newBid;
+ const newSource=String(data.highest_bid_source||'').toLowerCase();
+ const newItem=Number(data.item_number||0);
+ if(lastTvBid!==null && newBid>lastTvBid && newSource==='online' && newItem===lastTvItem){ playTvBidBell(); }
+ lastTvBid=newBid; lastTvItem=newItem;
  document.getElementById("itemLabel").textContent=`Item ${data.item_number}: ${data.item_name}`;
  document.getElementById("currentBid").textContent=money(data.current_bid);
  document.getElementById("highest").textContent=data.highest_bidder?`${esc(String(data.highest_bidder).split("|||")[0])}`:"No bidder";
