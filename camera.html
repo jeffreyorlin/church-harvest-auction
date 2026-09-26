@@ -119,6 +119,11 @@ document.body.classList.add('camera-locked');
         <label for="cameraLiveVolume">VOLUME <span id="cameraLiveVolumeValue">100%</span></label>
         <input id="cameraLiveVolume" type="range" min="0" max="100" value="100" step="1" oninput="setCameraLiveVolume(this.value)">
       </div>
+      <div class="camera-sound-row">
+        <label>🔇 MUTE CONTROLS</label>
+        <button type="button" id="muteInternalBtn" onclick="toggleCameraMute('internal')">🔊 MUTE INTERNAL</button>
+        <button type="button" id="muteExternalBtn" onclick="toggleCameraMute('external')">🔊 MUTE EXTERNAL</button>
+      </div>
       <div class="camera-meter-wrap"><span>VOLUME METER</span><div class="camera-meter"><div id="cameraMeterFill" class="camera-meter-fill"></div></div><span id="cameraMeterText">0%</span></div>
       <div id="cameraSoundOutputStatus" class="small muted">Internal/default speaker selected</div>
     </div>
@@ -313,6 +318,7 @@ function scannerLoop(){const v=document.getElementById('scannerVideo'),c=documen
 let cameraLiveVolume=1;
 let cameraOutputMode='internal';
 let cameraExternalOutputId='';
+let cameraMuted={internal:false,external:false};
 let cameraAudioContext=null, cameraAnalyser=null, cameraMeterAnimation=null;
 function cameraAudioElements(){ const v=document.getElementById('preview'); return v?[v]:[]; }
 async function loadCameraAudioOutputs(){
@@ -349,10 +355,29 @@ async function changeCameraSoundOutput(mode){
   if(mode==='external'&&cameraExternalOutputId)sink=cameraExternalOutputId;
   for(const el of cameraAudioElements()){
     if(typeof el.setSinkId==='function'){try{await el.setSinkId(sink);routed=true}catch(e){console.warn(e)}}
+    el.muted=!!cameraMuted[mode];
   }
   const st=document.getElementById('cameraSoundOutputStatus');
-  if(st)st.textContent=mode==='external'?(routed?'External speaker/output selected':'External output not supported; using default output'):'Internal/default speaker selected';
+  const muteText=cameraMuted[mode]?' • MUTED':'';
+  if(st)st.textContent=mode==='external'?(routed?'External speaker/output selected':'External output not supported; using default output')+' '+muteText:'Internal/default speaker selected'+muteText;
+  updateCameraMuteButtons();
   localStorage.setItem('churchAuctionCameraSoundOutput',mode);
+}
+function updateCameraMuteButtons(){
+  const a=document.getElementById('muteInternalBtn'),b=document.getElementById('muteExternalBtn');
+  if(a)a.textContent=cameraMuted.internal?'🔇 UNMUTE INTERNAL':'🔊 MUTE INTERNAL';
+  if(b)b.textContent=cameraMuted.external?'🔇 UNMUTE EXTERNAL':'🔊 MUTE EXTERNAL';
+}
+async function toggleCameraMute(mode){
+  cameraMuted[mode]=!cameraMuted[mode];
+  if(cameraOutputMode===mode){
+    const v=document.getElementById('preview');
+    if(v)v.muted=cameraMuted[mode];
+  }
+  localStorage.setItem('churchAuctionCameraMutedInternal',cameraMuted.internal?'1':'0');
+  localStorage.setItem('churchAuctionCameraMutedExternal',cameraMuted.external?'1':'0');
+  updateCameraMuteButtons();
+  await changeCameraSoundOutput(cameraOutputMode);
 }
 function setCameraLiveVolume(value){
   const n=Math.max(0,Math.min(100,Number(value)||0)); cameraLiveVolume=n/100;
@@ -375,7 +400,7 @@ function startCameraVolumeMeter(mediaStream){
     if(cameraAudioContext.state==='suspended') cameraAudioContext.resume().catch(()=>{});
   }catch(e){console.warn('Camera volume meter unavailable',e)}
 }
-window.addEventListener('load',async()=>{updateTopLensStatus();const v=Number(localStorage.getItem('churchAuctionCameraLiveVolume'));const s=document.getElementById('cameraLiveVolume');if(Number.isFinite(v)&&s)s.value=Math.max(0,Math.min(100,v));setCameraLiveVolume(s?.value??100);const mode=localStorage.getItem('churchAuctionCameraSoundOutput')||'internal';const sel=document.getElementById('cameraSoundOutput');if(sel)sel.value=mode;cameraOutputMode=mode;await loadCameraAudioOutputs();await changeCameraSoundOutput(mode);['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,async()=>{try{if(cameraAudioContext?.state==='suspended')await cameraAudioContext.resume()}catch(e){}},{passive:true}))});
+window.addEventListener('load',async()=>{cameraMuted.internal=localStorage.getItem('churchAuctionCameraMutedInternal')==='1';cameraMuted.external=localStorage.getItem('churchAuctionCameraMutedExternal')==='1';updateCameraMuteButtons();updateTopLensStatus();const v=Number(localStorage.getItem('churchAuctionCameraLiveVolume'));const s=document.getElementById('cameraLiveVolume');if(Number.isFinite(v)&&s)s.value=Math.max(0,Math.min(100,v));setCameraLiveVolume(s?.value??100);const mode=localStorage.getItem('churchAuctionCameraSoundOutput')||'internal';const sel=document.getElementById('cameraSoundOutput');if(sel)sel.value=mode;cameraOutputMode=mode;await loadCameraAudioOutputs();await changeCameraSoundOutput(mode);['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,async()=>{try{if(cameraAudioContext?.state==='suspended')await cameraAudioContext.resume()}catch(e){}},{passive:true}))});
 
 function setRotation(rotation, broadcast=true){
   cameraRotation=((Number(rotation)%360)+360)%360;
@@ -459,7 +484,7 @@ async function connectSelectedLens(){
   const id=select?.value;
   if(!id){if(msg)msg.textContent='Please select a lens first.';return;}
   try{
-    const newStream=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:id},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:false});
+    const newStream=await navigator.mediaDevices.getUserMedia({video:{deviceId:{exact:id},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}},audio:true});
     const newTrack=newStream.getVideoTracks()[0];
     if(!newTrack)throw new Error('The selected lens did not provide a video track.');
     const old=stream;
@@ -614,10 +639,10 @@ async function startCamera(){
     msg.textContent='Requesting Full HD 1920×1080 camera at 30 FPS...';
     try{
       try{
-        stream=await navigator.mediaDevices.getUserMedia({video:{width:{exact:1920},height:{exact:1080},frameRate:{exact:30}},audio:false});
+        stream=await navigator.mediaDevices.getUserMedia({video:{width:{exact:1920},height:{exact:1080},frameRate:{exact:30}},audio:true});
       }catch(exactErr){
         console.warn('Exact 1920×1080@30 unavailable; using best supported mode:', exactErr);
-        stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}},audio:false});
+        stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920,min:1280},height:{ideal:1080,min:720},frameRate:{ideal:30,min:24}},audio:true});
       }
     }catch(e){
       console.error('Basic getUserMedia failed:',e);

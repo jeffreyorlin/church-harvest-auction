@@ -1,8 +1,12 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Church Auction TV</title><link rel="stylesheet" href="style.css"></head><style>
+<title>Church Auction TV</title><link rel="stylesheet" href="style.css"><style>
+.tv-highest{font-size:clamp(42px,7vw,96px)!important;font-weight:900!important;line-height:1.05;text-align:center;margin:12px 0;text-shadow:0 4px 18px #0008;}
+.tv-item-label{font-size:clamp(22px,3vw,42px)!important;font-weight:800;text-align:center;margin-top:14px;}
+.tv-bid{font-size:clamp(34px,5vw,70px)!important;font-weight:900;text-align:center;}
+</style></head><style>
 .sold-private-field.hidden-offline{display:none!important}
-#tvPinGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;font-family:Arial,sans-serif}#tvPinGate .box{width:min(92vw,380px);padding:28px;border-radius:16px;background:#222;text-align:center}#tvPinGate input{width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #555;background:#111;color:#fff;font-size:24px;text-align:center;letter-spacing:8px}#tvPinGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700}.tv-locked>*:not(#tvPinGate){visibility:hidden}</style><div id="tvPinGate"><div class="box"><h2>🔐 TV Display</h2><p>Enter the 4-digit TV PIN</p><input id="tvPinInput" type="password" inputmode="numeric" maxlength="4" autofocus><button id="tvPinBtn">Unlock TV</button><div id="tvPinErr"></div></div></div><script>document.body.classList.add('tv-locked');(()=>{const P='1206',g=document.getElementById('tvPinGate'),i=document.getElementById('tvPinInput'),b=document.getElementById('tvPinBtn'),e=document.getElementById('tvPinErr');function u(){if(i.value===P){sessionStorage.setItem('churchAuctionTvUnlocked','1');g.remove();document.body.classList.remove('tv-locked')}else{e.textContent='Incorrect PIN';i.value='';i.focus()}}b.onclick=u;i.onkeydown=x=>{if(x.key==='Enter')u()};if(sessionStorage.getItem('churchAuctionTvUnlocked')==='1'){g.remove();document.body.classList.remove('tv-locked')}})();</script>
+#tvPinGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;font-family:Arial,sans-serif}#tvPinGate .box{width:min(92vw,380px);padding:28px;border-radius:16px;background:#222;text-align:center}#tvPinGate input{width:100%;box-sizing:border-box;padding:14px;margin:14px 0;border-radius:10px;border:1px solid #555;background:#111;color:#fff;font-size:24px;text-align:center;letter-spacing:8px}#tvPinGate button{width:100%;padding:14px;border:0;border-radius:10px;font-size:18px;font-weight:700}.tv-locked>*:not(#tvPinGate){visibility:hidden}</style><div id="tvPinGate"><div class="box"><h2>🔐 TV Display</h2><p>Enter the 4-digit TV PIN</p><input id="tvPinInput" type="password" inputmode="numeric" maxlength="4" autofocus><button id="tvPinBtn">Unlock TV</button><div id="tvPinErr"></div></div></div><script>document.body.classList.add('tv-locked');(()=>{const P='1206',g=document.getElementById('tvPinGate'),i=document.getElementById('tvPinInput'),b=document.getElementById('tvPinBtn'),e=document.getElementById('tvPinErr');function u(){if(i.value===P){sessionStorage.setItem('churchAuctionTvUnlocked','1');g.remove();document.body.classList.remove('tv-locked')}else{e.textContent='Incorrect PIN';i.value='';i.focus()}}b.onclick=()=>{unlockTvBell();u()};i.onkeydown=x=>{if(x.key==='Enter'){unlockTvBell();u()}};if(sessionStorage.getItem('churchAuctionTvUnlocked')==='1'){g.remove();document.body.classList.remove('tv-locked')}})();</script>
 <body class="tv-landscape">
 <div class="tv-shell">
   <div class="tv-brand-bar church-brand"><span class="brand-cross">✝️</span> CSI MEEETPAR YESU ALAYAM</div>
@@ -39,9 +43,9 @@
   <div id="app" class="hidden tv-stage">
     <section id="auctionSlide" class="tv-slide active">
       <div class="tv-auction-card">
-        <div id="itemLabel" class="tv-item-label">Waiting...</div>
-        <div id="currentBid" class="tv-bid">₹0</div>
         <div id="highest" class="tv-highest">No bidder</div>
+        <div id="currentBid" class="tv-bid">₹0</div>
+        <div id="itemLabel" class="tv-item-label">Waiting...</div>
         <span id="status" class="status">WAITING</span>
       </div>
       <div class="tv-live-panel">
@@ -114,10 +118,29 @@ async function init(){
  channel=sb.channel("auction-live").on("postgres_changes",{event:"*",schema:"public",table:"auction_state"},refresh).subscribe();
  setupCameraViewer();
 }
+let lastTvBid=null;
+let tvBellCtx=null;
+function unlockTvBell(){
+ try{if(!tvBellCtx)tvBellCtx=new (window.AudioContext||window.webkitAudioContext)(); if(tvBellCtx.state==='suspended')tvBellCtx.resume();}catch(e){}
+}
+function playTvBidBell(){
+ try{
+  unlockTvBell(); if(!tvBellCtx)return;
+  const now=tvBellCtx.currentTime;
+  const o=tvBellCtx.createOscillator(), g=tvBellCtx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(880,now); o.frequency.exponentialRampToValueAtTime(1320,now+0.12);
+  g.gain.setValueAtTime(0.0001,now); g.gain.exponentialRampToValueAtTime(0.32,now+0.015); g.gain.exponentialRampToValueAtTime(0.0001,now+0.7);
+  o.connect(g); g.connect(tvBellCtx.destination); o.start(now); o.stop(now+0.72);
+  const o2=tvBellCtx.createOscillator(),g2=tvBellCtx.createGain(); o2.type='sine'; o2.frequency.value=1760; g2.gain.setValueAtTime(0.0001,now); g2.gain.exponentialRampToValueAtTime(0.12,now+0.02); g2.gain.exponentialRampToValueAtTime(0.0001,now+0.55); o2.connect(g2);g2.connect(tvBellCtx.destination);o2.start(now);o2.stop(now+0.56);
+ }catch(e){console.warn('TV bell',e)}
+}
 async function refresh(){const {data,error}=await sb.from("auction_state").select("*").eq("id",1).single();if(error)return;
+ const newBid=Number(data.current_bid||0);
+ if(lastTvBid!==null && newBid>lastTvBid) playTvBidBell();
+ lastTvBid=newBid;
  document.getElementById("itemLabel").textContent=`Item ${data.item_number}: ${data.item_name}`;
  document.getElementById("currentBid").textContent=money(data.current_bid);
- document.getElementById("highest").textContent=data.highest_bidder?`${esc(String(data.highest_bidder).split("|||")[0])} (${data.highest_bid_source})`:"No bidder";
+ document.getElementById("highest").textContent=data.highest_bidder?`${esc(String(data.highest_bidder).split("|||")[0])}`:"No bidder";
  document.getElementById("status").textContent=data.status.toUpperCase();
  const sold = ["sold","sold_out"].includes(String(data.status).toLowerCase());
  document.getElementById("soldOverlay").classList.toggle("show", sold);
